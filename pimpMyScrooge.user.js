@@ -68,8 +68,14 @@
             .article-tile-item{margin:8px!important;transform:scale(1)!important;width:clamp(100px,140px,30vw)!important;height:clamp(100px,140px,30vw)!important;display:inline-block!important;position:relative!important;border-radius:12px!important;overflow:hidden!important}
             .article-tile-item>a{border-radius:12px!important;overflow:hidden!important;display:block!important;width:100%!important;height:100%!important}
             .article-tile-item img{transform:scale(1)!important;width:100%!important;height:100%!important;object-fit:cover!important;display:block!important;border-radius:12px!important}
+            .pimp-search-row{gap:16px}
+            .pimp-search-bar{gap:12px}
             @media(max-width:768px){
                 #epita-quick-login-container{padding:12px!important;max-width:100%!important}
+                .pimp-search-row{gap:8px!important}
+                .pimp-search-bar{gap:6px!important}
+                #epita-login-input{padding:12px 16px!important;font-size:16px!important}
+                #epita-quick-login-container button{padding:12px 16px!important;font-size:14px!important}
                 .article-tile-item{width:clamp(80px,120px,40vw)!important;height:clamp(80px,120px,40vw)!important}
             }
         `;
@@ -197,9 +203,11 @@
         } catch (e) {}
 
         const row = document.createElement('div');
+        row.className = 'pimp-search-row';
         css(row, {display: 'flex', alignItems: 'center', gap: '16px', width: '100%', flexWrap: 'wrap'});
 
         const searchBar = document.createElement('div');
+        searchBar.className = 'pimp-search-bar';
         css(searchBar, {display: 'flex', alignItems: 'center', gap: '12px', flex: '1', minWidth: '200px'});
 
         const input = document.createElement('input');
