@@ -7,8 +7,8 @@
 // @grant        GM_xmlhttpRequest
 // @connect      cri.epita.fr
 // @run-at       document-idle
-// @updateURL    https://raw.githubusercontent.com/lucasduport/pimpMyScrooge/main/pimpMyScrooge.js
-// @downloadURL  https://raw.githubusercontent.com/lucasduport/pimpMyScrooge/main/pimpMyScrooge.js
+// @updateURL    https://raw.githubusercontent.com/lucasduport/pimpMyScrooge/main/pimpMyScrooge.user.js
+// @downloadURL  https://raw.githubusercontent.com/lucasduport/pimpMyScrooge/main/pimpMyScrooge.user.js
 // ==/UserScript==
 
 (() => {
