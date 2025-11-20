@@ -492,15 +492,43 @@
         // Fetch balance
         const fetchBalance = async () => {
             try {
+                // Essayer d'abord de récupérer le solde depuis le lien de crédit étudiant
                 const link = $('a.btn[href*="/credit-student/"]');
                 if (link) {
                     const match = (link.textContent || link.innerText).match(/Solde\s*:\s*([-]?\d+(?:[,\.]\d+)?)\s*€/i);
                     if (match) {
                         basketData.balance = parseFloat(match[1].replace(',', '.'));
                         updateBasket();
+                        return;
                     }
                 }
-            } catch (e) {}
+                
+                // Fallback: si le solde n'a pas été trouvé, c'est probablement un assistant
+                // On récupère le solde depuis la page /me/
+                const response = await fetch('/me/');
+                const html = await response.text();
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                
+                // Chercher le solde dans la card avec le header "Solde actuel"
+                const cards = Array.from(doc.querySelectorAll('.card'));
+                for (const card of cards) {
+                    const header = card.querySelector('.card-header');
+                    if (header && header.textContent.trim() === 'Solde actuel') {
+                        const balanceElement = card.querySelector('.card-body h1, .card-body .display-3');
+                        if (balanceElement) {
+                            const balanceMatch = balanceElement.textContent.match(/([-]?\d+(?:[,\.]\d+)?)\s*€/);
+                            if (balanceMatch) {
+                                basketData.balance = parseFloat(balanceMatch[1].replace(',', '.'));
+                                updateBasket();
+                                return;
+                            }
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error('Failed to fetch balance:', e);
+            }
         };
         
         if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fetchBalance);
@@ -565,7 +593,7 @@
             
             if (basketData.balance !== null && total > 0) {
                 const remaining = basketData.balance - total;
-                const affordable = total <= basketData.balance;
+                const affordable = remaining >= 0;
                 const gradient = affordable ? 'linear-gradient(135deg,#34c759 0%,#30d158 100%)' : 'linear-gradient(135deg,#ff3b30 0%,#ff9500 100%)';
                 
                 css(floatingTotal, {
@@ -573,9 +601,7 @@
                     boxShadow: affordable ? '0 8px 32px rgba(52,199,89,.4)' : '0 8px 32px rgba(255,59,48,.4)'
                 });
                 
-                $('#floating-basket-remaining').textContent = affordable 
-                    ? `Remaining: ${remaining.toFixed(2).replace('.', ',')} €`
-                    : `Insufficient (${Math.abs(remaining).toFixed(2).replace('.', ',')} € short)`;
+                $('#floating-basket-remaining').textContent = `Remaining: ${remaining.toFixed(2).replace('.', ',')} €`;
             }
             
             panel.style.display = hasItems ? 'flex' : 'none';
