@@ -1,13 +1,12 @@
 // ==UserScript==
 // @name         PimpMyScrooge
 // @namespace    https://scrooge.assistants.epita.fr/*
-// @version      2.3
-// @description  Quick search bar + QR code scanner + Check user + Highlight my login + Autocomplete + Hardcore Mode
+// @version      2.0
+// @description  Quick search bar + QR code scanner + Check user + Highlight my login + Autocomplete + Hardcore Mode + Better Basket
 // @match        https://scrooge.assistants.epita.fr/kiosk/group/*
 // @match        https://scrooge.assistants.epita.fr/kiosk/basket/*
 // @grant        GM_xmlhttpRequest
 // @connect      cri.epita.fr
-// @require      https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js
 // @run-at       document-idle
 // @updateURL    https://raw.githubusercontent.com/lucasduport/pimpMyScrooge/main/pimpMyScrooge.user.js
 // @downloadURL  https://raw.githubusercontent.com/lucasduport/pimpMyScrooge/main/pimpMyScrooge.user.js
@@ -16,79 +15,11 @@
 (() => {
     'use strict';
 
-    const domain = '@epita.fr';
-    let hardcoreMode = false;
-    let hardcoreInterval = null;
-
-    // Inject animation styles
-    const style = document.createElement('style');
-    style.textContent = `
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translate(-50%, -50%) scale(0.9);
-            }
-            to {
-                opacity: 1;
-                transform: translate(-50%, -50%) scale(1);
-            }
-        }
-        .member-list form.form-wrapper {
-            transform: scale(0.95);
-            margin: 4px;
-        }
-        .member-list form.form-wrapper:hover {
-            transform: scale(1.05);
-        }
-        .member-list .group-avatar {
-            transform: scale(1.2) !important;
-            margin: 12px !important;
-        }
-        .member-list .group-avatar:hover {
-            transform: scale(1.3) !important;
-        }
-        .member-list .member-avatar {
-            border-radius: 12px;
-        }
-        .article-tile-group {
-            border: 1px solid rgba(0,0,0,0.08) !important;
-            border-radius: 12px !important;
-            padding: 12px !important;
-            margin-bottom: 20px !important;
-            gap: 8px !important;
-        }
-        .article-tile-item {
-            margin: 8px !important;
-            transform: scale(1) !important;
-            width: 140px !important;
-            height: 140px !important;
-            display: inline-block !important;
-            position: relative !important;
-            border-radius: 12px !important;
-            overflow: hidden !important;
-        }
-        .article-tile-item > a {
-            border-radius: 12px !important;
-            overflow: hidden !important;
-            display: block !important;
-            width: 100% !important;
-            height: 100% !important;
-        }
-        .article-tile-item img {
-            transform: scale(1) !important;
-            width: 100% !important;
-            height: 100% !important;
-            object-fit: cover !important;
-            display: block !important;
-            border-radius: 12px !important;
-        }
-    `;
-    document.head.appendChild(style);
-
-    // Utility functions
-    const $ = (sel, ctx = document) => ctx.querySelector(sel);
-    const $$ = (sel, ctx = document) => Array.from(ctx.querySelectorAll(sel));
+    // Core utilities
+    const $ = (s, c = document) => c.querySelector(s);
+    const $$ = (s, c = document) => Array.from(c.querySelectorAll(s));
     const css = (el, styles) => Object.assign(el.style, styles);
+    const wait = ms => new Promise(r => setTimeout(r, ms));
     const shuffleArray = arr => {
         const s = [...arr];
         for (let i = s.length - 1; i > 0; i--) {
@@ -97,119 +28,162 @@
         }
         return s;
     };
-    const shuffleElements = (parent, selector) => {
-        const els = $$(selector, parent);
-        if (els.length) shuffleArray(els).forEach(el => parent.appendChild(el));
+
+    // Global state
+    const state = {
+        domain: '@epita.fr',
+        hardcore: false,
+        hardcoreTimer: null,
+        jsQRLoaded: false,
+        isBasket: location.pathname.includes('/basket/')
     };
 
-    async function ensureJsQR() {
-        if (typeof jsQR !== 'undefined') return console.log('jsQR loaded via @require'), true;
-        console.log('jsQR not found via @require, trying fetch fallback...');
+    // Lazy load jsQR only when needed
+    const loadJsQR = async () => {
+        if (state.jsQRLoaded || typeof jsQR !== 'undefined') return state.jsQRLoaded = true;
         try {
             eval(await (await fetch('https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js')).text());
-            await new Promise(r => setTimeout(r, 100));
-            if (typeof jsQR !== 'undefined') return console.log('jsQR loaded via fetch fallback'), true;
+            await wait(100);
+            return state.jsQRLoaded = typeof jsQR !== 'undefined';
         } catch (e) {
-            console.error('Failed to load jsQR via fetch:', e);
+            console.error('jsQR load failed:', e);
+            return false;
         }
-        return false;
-    }
+    };
 
-    function toggleHardcoreMode() {
-        hardcoreMode = !hardcoreMode;
+    // Style injection
+    const injectStyles = () => {
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes fadeIn{from{opacity:0;transform:translate(-50%,-50%)scale(.9)}to{opacity:1;transform:translate(-50%,-50%)scale(1)}}
+            .message{position:relative!important;z-index:100000!important}
+            .member-list form.form-wrapper{transform:scale(.95);margin:4px}
+            .member-list form.form-wrapper:hover{transform:scale(1.05)}
+            .member-list .group-avatar{transform:scale(1.2)!important;margin:12px!important}
+            .member-list .group-avatar:hover{transform:scale(1.3)!important}
+            .member-list .member-avatar{border-radius:12px}
+            .article-tile-group{border:1px solid rgba(0,0,0,.08)!important;border-radius:12px!important;padding:12px!important;margin-bottom:20px!important;gap:8px!important}
+            .article-tile-item{margin:8px!important;transform:scale(1)!important;width:clamp(100px,140px,30vw)!important;height:clamp(100px,140px,30vw)!important;display:inline-block!important;position:relative!important;border-radius:12px!important;overflow:hidden!important}
+            .article-tile-item>a{border-radius:12px!important;overflow:hidden!important;display:block!important;width:100%!important;height:100%!important}
+            .article-tile-item img{transform:scale(1)!important;width:100%!important;height:100%!important;object-fit:cover!important;display:block!important;border-radius:12px!important}
+            @media(max-width:768px){
+                #epita-quick-login-container{padding:12px!important;max-width:100%!important}
+                .article-tile-item{width:clamp(80px,120px,40vw)!important;height:clamp(80px,120px,40vw)!important}
+            }
+        `;
+        document.head.appendChild(style);
+    };
+
+    // Hardcore mode toggle
+    const toggleHardcore = () => {
+        state.hardcore = !state.hardcore;
         const btn = $('#hardcore-mode-btn');
         
-        if (hardcoreMode) {
-            hardcoreInterval = setInterval(() => {
+        if (state.hardcore) {
+            state.hardcoreTimer = setInterval(() => {
                 const ml = $('.member-list');
-                if (ml) shuffleElements(ml, 'form.form-wrapper');
-                $$('.article-tile-group').forEach(g => shuffleElements(g, '.article-tile-item'));
+                if (ml) shuffleArray($$('form.form-wrapper', ml)).forEach(el => ml.appendChild(el));
+                $$('.article-tile-group').forEach(g => shuffleArray($$('.article-tile-item', g)).forEach(el => g.appendChild(el)));
             }, 500);
-            console.log('🔥 HARDCORE MODE ACTIVATED 🔥');
         } else {
-            clearInterval(hardcoreInterval);
-            hardcoreInterval = null;
-            console.log('Hardcore mode deactivated');
+            clearInterval(state.hardcoreTimer);
+            state.hardcoreTimer = null;
         }
         
-        if (btn) css(btn, hardcoreMode ? {
-            background: 'linear-gradient(135deg, #ff3b30 0%, #ff9500 100%)',
+        if (btn) css(btn, state.hardcore ? {
+            background: 'linear-gradient(135deg,#ff3b30 0%,#ff9500 100%)',
             color: 'white',
-            boxShadow: '0 4px 20px rgba(255,59,48,0.4)'
+            boxShadow: '0 4px 20px rgba(255,59,48,.4)'
         } : {
-            background: 'rgba(255,255,255,0.95)',
+            background: 'rgba(255,255,255,.95)',
             color: '#8e8e93',
-            boxShadow: '0 2px 12px rgba(0,0,0,0.08)'
+            boxShadow: '0 2px 12px rgba(0,0,0,.08)'
         });
-    }
+    };
 
-    // Initialize
-    const isBasketPage = location.pathname.includes('/kiosk/basket/');
-    
-    if (isBasketPage) {
-        enhanceProductDisplay();
-        createBasketControls();
-        createHardcoreButton();
-    } else {
-        ensureJsQR().then(success => {
-            if (!success) console.error('Failed to load jsQR');
-            createBar();
+    // Button factory
+    const createBtn = (content, baseStyles, hoverStyles) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        if (content.includes('<')) btn.innerHTML = content;
+        else btn.textContent = content;
+        css(btn, baseStyles);
+        if (hoverStyles) {
+            btn.addEventListener('mouseenter', () => css(btn, hoverStyles));
+            btn.addEventListener('mouseleave', () => css(btn, baseStyles));
+        }
+        return btn;
+    };
+
+    // User validation
+    const validateUser = (val, callback) => {
+        if (!val) return;
+        val = val.split('@')[0];
+        
+        GM_xmlhttpRequest({
+            method: 'GET',
+            url: `https://cri.epita.fr/users/${val}`,
+            onload: res => callback(res.status !== 404, val),
+            onerror: () => callback(false, val)
         });
-    }
+    };
 
-    function createBar() {
+    // Form submission
+    const submitForm = email => {
+        let form = $('form') || $('input[name="client"]')?.form;
+        if (!form) {
+            form = document.createElement('form');
+            css(form, {display: 'none'});
+            form.method = 'post';
+            form.action = location.href;
+            document.body.appendChild(form);
+        }
+
+        let field = form.querySelector('input[name="client"]');
+        if (!field) {
+            field = document.createElement('input');
+            field.type = 'hidden';
+            field.name = 'client';
+            form.appendChild(field);
+        }
+        field.value = email;
+
+        const visible = $('input[type="email"], input[type="text"].login');
+        if (visible) visible.value = email;
+
+        try { form.submit(); } catch { $('button[type="submit"]', form)?.click(); }
+    };
+
+
+    // Group UI creation
+    const createGroupUI = async () => {
         const container = document.createElement('div');
         container.id = 'epita-quick-login-container';
         css(container, {
-            position: 'fixed', top: '0', left: '50%', transform: 'translateX(-50%)',
+            position: 'fixed', top: 0, left: '50%', transform: 'translateX(-50%)',
             width: '100%', maxWidth: '800px', zIndex: 99999,
-            padding: '20px 24px 0 24px',
-            fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif',
-            display: 'flex', flexDirection: 'column', alignItems: 'stretch', boxSizing: 'border-box', gap: '16px'
+            padding: '20px 24px 0 24px', display: 'flex', flexDirection: 'column',
+            gap: '16px', fontFamily: '-apple-system,BlinkMacSystemFont,"SF Pro Display",Roboto,sans-serif'
         });
 
-        createUserInterface(container);
-        document.body.appendChild(container);
-        
-        const updatePadding = () => {
-            const ml = $('.member-list');
-            if (ml) ml.style.paddingTop = (container.offsetHeight + 20) + 'px';
-        };
-        
-        new MutationObserver(() => {
-            if ($('.member-list')) {
-                updatePadding();
-                enhanceMemberAvatars();
-            }
-        }).observe(document.body, { childList: true, subtree: true });
-        
-        setTimeout(() => { updatePadding(); enhanceMemberAvatars(); }, 50);
-        setTimeout(() => { updatePadding(); enhanceMemberAvatars(); }, 300);
-        window.addEventListener('resize', updatePadding);
-    }
-
-    async function createUserInterface(container) {
-        let myLogin = null, userAvatarUrl = null;
-        
+        let myLogin, avatarUrl;
         try {
             const url = (await fetch('/me')).url;
             const match = url.match(/\/profile\/([^\/]+)/);
             if (match) {
                 myLogin = match[1];
-                const myForm = $(`form[data-login="${myLogin}"]`);
-                const avatarBtn = myForm?.querySelector('.member-avatar');
-                const urlMatch = avatarBtn?.style.backgroundImage.match(/url\(['"]?([^'"]+)['"]?\)/);
-                if (urlMatch) userAvatarUrl = urlMatch[1];
+                const form = $(`form[data-login="${myLogin}"]`);
+                const avatar = form?.querySelector('.member-avatar');
+                const urlMatch = avatar?.style.backgroundImage.match(/url\(['"]?([^'"]+)['"]?\)/);
+                if (urlMatch) avatarUrl = urlMatch[1];
             }
-        } catch (error) {
-            console.error('Error fetching user info:', error);
-        }
+        } catch (e) {}
 
-        const mainRow = document.createElement('div');
-        css(mainRow, { display: 'flex', alignItems: 'center', gap: '16px', width: '100%' });
+        const row = document.createElement('div');
+        css(row, {display: 'flex', alignItems: 'center', gap: '16px', width: '100%', flexWrap: 'wrap'});
 
         const searchBar = document.createElement('div');
-        css(searchBar, { display: 'flex', alignItems: 'center', gap: '12px', flex: '1' });
+        css(searchBar, {display: 'flex', alignItems: 'center', gap: '12px', flex: '1', minWidth: '200px'});
 
         const input = document.createElement('input');
         input.id = 'epita-login-input';
@@ -217,701 +191,467 @@
         input.placeholder = 'xavier.login';
         input.setAttribute('list', 'login-datalist');
         css(input, {
-            padding: '14px 18px', borderRadius: '10px', border: '1.5px solid rgba(0,0,0,0.08)',
+            padding: '14px 18px', borderRadius: '10px', border: '1.5px solid rgba(0,0,0,.08)',
             fontSize: '16px', outline: 'none', flex: '1', background: 'white',
-            transition: 'all 0.2s ease', fontWeight: '400', color: '#1d1d1f'
+            transition: 'all .2s ease', fontWeight: '400', color: '#1d1d1f'
         });
-        
+
         const datalist = document.createElement('datalist');
         datalist.id = 'login-datalist';
-        $$('.member-list form.form-wrapper')
-            .map(f => f.getAttribute('data-login'))
-            .filter(Boolean)
-            .sort()
+        $$('form.form-wrapper').map(f => f.getAttribute('data-login')).filter(Boolean).sort()
             .forEach(login => {
                 const opt = document.createElement('option');
                 opt.value = login;
                 datalist.appendChild(opt);
             });
         document.body.appendChild(datalist);
-        
-        input.addEventListener('focus', () => css(input, { borderColor: '#007aff', boxShadow: '0 0 0 4px rgba(0,122,255,0.1)' }));
-        input.addEventListener('blur', () => css(input, { borderColor: 'rgba(0,0,0,0.08)', boxShadow: 'none' }));
+
+        input.addEventListener('focus', () => css(input, {borderColor: '#007aff', boxShadow: '0 0 0 4px rgba(0,122,255,.1)'}));
+        input.addEventListener('blur', () => css(input, {borderColor: 'rgba(0,0,0,.08)', boxShadow: 'none'}));
         searchBar.appendChild(input);
 
-        const createButton = (text, styles, hoverStyles) => {
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.textContent = text;
-            css(btn, styles);
-            btn.addEventListener('mouseenter', () => css(btn, hoverStyles));
-            btn.addEventListener('mouseleave', () => css(btn, styles));
-            return btn;
-        };
-
-        const btn = createButton('Go', {
+        const goBtn = createBtn('Go', {
             padding: '14px 32px', borderRadius: '10px', border: 'none', background: '#007aff',
             color: 'white', cursor: 'pointer', fontSize: '16px', fontWeight: '600',
-            transition: 'all 0.2s ease', boxShadow: '0 2px 8px rgba(0,122,255,0.3)', flexShrink: '0'
+            transition: 'all .2s ease', boxShadow: '0 2px 8px rgba(0,122,255,.3)', flexShrink: '0'
         }, {
-            background: '#0051d5', transform: 'translateY(-1px)', boxShadow: '0 4px 12px rgba(0,122,255,0.4)'
+            background: '#0051d5', transform: 'translateY(-1px)', boxShadow: '0 4px 12px rgba(0,122,255,.4)'
         });
-        searchBar.appendChild(btn);
-        mainRow.appendChild(searchBar);
+        searchBar.appendChild(goBtn);
+        row.appendChild(searchBar);
 
-        const scanBtn = document.createElement('button');
-        scanBtn.type = 'button';
-        scanBtn.innerHTML = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>`;
-        scanBtn.title = 'Scan QR Code';
-        css(scanBtn, {
+        const scanBtn = createBtn(`<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>`, {
             padding: '14px 24px', borderRadius: '10px', border: 'none',
-            background: 'linear-gradient(135deg, #34c759 0%, #30d158 100%)', color: 'white',
-            cursor: 'pointer', transition: 'all 0.2s ease', boxShadow: '0 2px 8px rgba(52,199,89,0.3)',
+            background: 'linear-gradient(135deg,#34c759 0%,#30d158 100%)', color: 'white',
+            cursor: 'pointer', transition: 'all .2s ease', boxShadow: '0 2px 8px rgba(52,199,89,.3)',
             display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: '0'
+        }, {
+            transform: 'translateY(-1px)', boxShadow: '0 4px 12px rgba(52,199,89,.4)'
         });
-        scanBtn.addEventListener('mouseenter', () => css(scanBtn, { transform: 'translateY(-1px)', boxShadow: '0 4px 12px rgba(52,199,89,0.4)' }));
-        scanBtn.addEventListener('mouseleave', () => css(scanBtn, { transform: 'translateY(0)', boxShadow: '0 2px 8px rgba(52,199,89,0.3)' }));
-        mainRow.appendChild(scanBtn);
+        scanBtn.title = 'Scan QR Code';
+        row.appendChild(scanBtn);
 
-        const hardcoreBtn = document.createElement('button');
-        hardcoreBtn.id = 'hardcore-mode-btn';
-        hardcoreBtn.type = 'button';
-        hardcoreBtn.title = 'Hardcore Mode';
-        hardcoreBtn.innerHTML = `<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C12 2 7 6 7 11C7 13.76 9.24 16 12 16C14.76 16 17 13.76 17 11C17 6 12 2 12 2Z" /><path d="M12 16C12 16 9 18 9 20.5C9 21.88 10.12 23 11.5 23C12.88 23 14 21.88 14 20.5C14 18 12 16 12 16Z" /></svg>`;
-        css(hardcoreBtn, {
-            padding: '14px 24px', borderRadius: '10px', border: 'none', background: 'rgba(255,255,255,0.95)',
-            color: '#8e8e93', cursor: 'pointer', transition: 'all 0.2s ease',
-            boxShadow: '0 2px 12px rgba(0,0,0,0.08)', display: 'flex', alignItems: 'center',
+        const hardcoreBtn = createBtn(`<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C12 2 7 6 7 11C7 13.76 9.24 16 12 16C14.76 16 17 13.76 17 11C17 6 12 2 12 2Z"/><path d="M12 16C12 16 9 18 9 20.5C9 21.88 10.12 23 11.5 23C12.88 23 14 21.88 14 20.5C14 18 12 16 12 16Z"/></svg>`, {
+            padding: '14px 24px', borderRadius: '10px', border: 'none', background: 'rgba(255,255,255,.95)',
+            color: '#8e8e93', cursor: 'pointer', transition: 'all .2s ease',
+            boxShadow: '0 2px 12px rgba(0,0,0,.08)', display: 'flex', alignItems: 'center',
             justifyContent: 'center', flexShrink: '0'
+        }, {
+            transform: 'translateY(-1px)', boxShadow: '0 4px 20px rgba(0,0,0,.15)'
         });
-        hardcoreBtn.addEventListener('mouseenter', () => css(hardcoreBtn, { transform: 'translateY(-1px)', boxShadow: '0 4px 20px rgba(0,0,0,0.15)' }));
-        hardcoreBtn.addEventListener('mouseleave', () => css(hardcoreBtn, { transform: 'translateY(0)', boxShadow: '0 2px 12px rgba(0,0,0,0.08)' }));
-        hardcoreBtn.addEventListener('click', toggleHardcoreMode);
-        mainRow.appendChild(hardcoreBtn);
-        container.appendChild(mainRow);
+        hardcoreBtn.id = 'hardcore-mode-btn';
+        hardcoreBtn.title = 'Hardcore Mode';
+        row.appendChild(hardcoreBtn);
+        container.appendChild(row);
+        document.body.appendChild(container);
 
-        btn.addEventListener('click', () => checkAndSubmit(input.value, null, input));
-        
-        let lastValue = '';
-        input.addEventListener('input', () => lastValue = input.value);
+        const checkAndSubmit = (val, msg, inp) => {
+            if (!val) return;
+            if (inp) {
+                inp.placeholder = 'Checking...';
+                inp.style.borderColor = '#007aff';
+            }
+            validateUser(val, (valid, login) => {
+                if (inp) {
+                    inp.placeholder = valid ? 'xavier.login' : `User "${login}" not found`;
+                    inp.style.borderColor = valid ? 'rgba(0,0,0,.08)' : '#ff3b30';
+                    if (valid) inp.value = login;
+                    else { inp.value = ''; inp.focus(); }
+                }
+                if (valid) submitForm(login + state.domain);
+            });
+        };
+
+        goBtn.addEventListener('click', () => checkAndSubmit(input.value, null, input));
+        let lastVal = '';
+        input.addEventListener('input', () => lastVal = input.value);
         input.addEventListener('keydown', e => {
             if (e.key === 'Enter') {
                 e.preventDefault();
                 setTimeout(() => checkAndSubmit(input.value, null, input), 50);
             }
-            if (e.key === 'Tab') {
-                setTimeout(() => {
-                    if (input.value !== lastValue && input.value.trim() !== '') {
-                        e.preventDefault();
-                        lastValue = input.value;
-                    }
-                }, 10);
-            }
         });
-
-        scanBtn.addEventListener('click', () => openCameraScanner(val => checkAndSubmit(val, null, input), null));
+        scanBtn.addEventListener('click', () => openScanner(val => checkAndSubmit(val, null, input)));
+        hardcoreBtn.addEventListener('click', toggleHardcore);
         setTimeout(() => input.focus(), 200);
-        
-        // Insert highlighted profile in member list
-        if (userAvatarUrl && myLogin) {
-            const insertHighlightedProfile = () => {
-                const memberList = $('.member-list');
-                if (!memberList || $('#highlighted-profile-row')) return;
+
+        // Update padding & enhance avatars
+        const updateUI = () => {
+            const ml = $('.member-list');
+            if (ml) {
+                ml.style.paddingTop = (container.offsetHeight + 20) + 'px';
+                $$('form.form-wrapper', ml).forEach(form => {
+                    const login = form.getAttribute('data-login');
+                    if (!login || form.querySelector('.pimp-login-label')) return;
+                    
+                    const btn = form.querySelector('.member-avatar');
+                    if (btn) {
+                        css(btn, {transition: 'transform .3s ease, box-shadow .3s ease', boxShadow: '0 2px 12px rgba(0,0,0,.08)', borderRadius: '12px'});
+                        btn.addEventListener('mouseenter', () => css(btn, {transform: 'scale(1.08)', boxShadow: '0 8px 24px rgba(0,0,0,.2)'}));
+                        btn.addEventListener('mouseleave', () => css(btn, {transform: 'scale(1)', boxShadow: '0 2px 12px rgba(0,0,0,.08)'}));
+                    }
+                    
+                    const label = document.createElement('div');
+                    label.className = 'pimp-login-label';
+                    label.textContent = login;
+                    css(label, {position: 'absolute', opacity: 0, fontSize: '1px', height: '1px', width: '1px', overflow: 'hidden'});
+                    form.appendChild(label);
+                });
+            }
+        };
+
+        // Highlight user profile
+        if (avatarUrl && myLogin) {
+            const highlightProfile = () => {
+                const ml = $('.member-list');
+                if (!ml || $('#highlighted-profile-row')) return;
                 
-                // Hide the original profile form
                 const myForm = $(`form[data-login="${myLogin}"]`);
-                if (myForm) {
-                    css(myForm, { display: 'none' });
-                }
+                if (myForm) css(myForm, {display: 'none'});
                 
-                const highlightedRow = document.createElement('div');
-                highlightedRow.id = 'highlighted-profile-row';
-                css(highlightedRow, {
-                    display: 'flex',
-                    justifyContent: 'center',
+                const row = document.createElement('div');
+                row.id = 'highlighted-profile-row';
+                css(row, {
+                    display: 'flex', 
+                    justifyContent: 'center', 
                     alignItems: 'center',
-                    padding: '20px 0 40px 0',
+                    padding: '20px 0 40px', 
                     marginBottom: '20px',
                     width: '100%'
                 });
                 
-                const avatarContainer = document.createElement('div');
-                css(avatarContainer, {
-                    width: '180px',
-                    height: '180px',
-                    borderRadius: '20px',
-                    backgroundImage: `url('${userAvatarUrl}')`,
-                    backgroundSize: 'cover',
+                const avatar = document.createElement('div');
+                css(avatar, {
+                    width: 'clamp(120px,180px,40vw)', 
+                    height: 'clamp(120px,180px,40vw)',
+                    borderRadius: '20px', 
+                    backgroundImage: `url('${avatarUrl}')`,
+                    backgroundSize: 'cover', 
                     backgroundPosition: 'center',
-                    boxShadow: '0 8px 32px rgba(0,122,255,0.25)',
-                    border: '4px solid rgba(0,122,255,0.3)',
+                    boxShadow: '0 8px 32px rgba(0,122,255,.25)',
+                    border: '4px solid rgba(0,122,255,.3)', 
                     cursor: 'pointer',
-                    transition: 'all 0.3s ease',
+                    transition: 'all .3s ease', 
                     position: 'relative'
                 });
                 
-                const loginLabel = document.createElement('div');
-                loginLabel.textContent = myLogin;
-                css(loginLabel, {
-                    position: 'absolute',
-                    bottom: '-28px',
-                    left: '50%',
+                const label = document.createElement('div');
+                label.textContent = myLogin;
+                css(label, {
+                    position: 'absolute', 
+                    bottom: '-28px', 
+                    left: '50%', 
                     transform: 'translateX(-50%)',
-                    fontSize: '14px',
-                    fontWeight: '600',
-                    color: '#007aff',
-                    whiteSpace: 'nowrap',
-                    fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif'
+                    fontSize: '14px', 
+                    fontWeight: '600', 
+                    color: '#007aff', 
+                    whiteSpace: 'nowrap'
                 });
-                avatarContainer.appendChild(loginLabel);
+                avatar.appendChild(label);
                 
                 if (myForm) {
-                    avatarContainer.addEventListener('click', () => myForm.querySelector('button').click());
-                    avatarContainer.addEventListener('mouseenter', () => css(avatarContainer, {
-                        transform: 'scale(1.08) translateY(-4px)',
-                        boxShadow: '0 12px 48px rgba(0,122,255,0.4)',
-                        borderColor: 'rgba(0,122,255,0.5)'
-                    }));
-                    avatarContainer.addEventListener('mouseleave', () => css(avatarContainer, {
-                        transform: 'scale(1) translateY(0)',
-                        boxShadow: '0 8px 32px rgba(0,122,255,0.25)',
-                        borderColor: 'rgba(0,122,255,0.3)'
-                    }));
+                    avatar.addEventListener('click', () => myForm.querySelector('button').click());
+                    avatar.addEventListener('mouseenter', () => css(avatar, {transform: 'scale(1.08) translateY(-4px)', boxShadow: '0 12px 48px rgba(0,122,255,.4)', borderColor: 'rgba(0,122,255,.5)'}));
+                    avatar.addEventListener('mouseleave', () => css(avatar, {transform: 'scale(1) translateY(0)', boxShadow: '0 8px 32px rgba(0,122,255,.25)', borderColor: 'rgba(0,122,255,.3)'}));
                 }
                 
-                highlightedRow.appendChild(avatarContainer);
-                memberList.insertBefore(highlightedRow, memberList.firstChild);
+                row.appendChild(avatar);
+                ml.insertBefore(row, ml.firstChild);
             };
             
-            setTimeout(insertHighlightedProfile, 100);
-            setTimeout(insertHighlightedProfile, 500);
-            
-            new MutationObserver(() => {
-                if ($('.member-list') && !$('#highlighted-profile-row')) {
-                    insertHighlightedProfile();
-                }
-            }).observe(document.body, { childList: true, subtree: true });
-        }
-    }
-
-    function enhanceMemberAvatars() {
-        $$('.member-list form.form-wrapper').forEach(form => {
-            const login = form.getAttribute('data-login');
-            if (!login || form.querySelector('.pimp-login-label')) return;
-            
-            const button = form.querySelector('.member-avatar');
-            if (button) {
-                css(button, { transition: 'transform 0.3s ease, box-shadow 0.3s ease, filter 0.3s ease', boxShadow: '0 2px 12px rgba(0,0,0,0.08)', borderRadius: '12px' });
-                button.addEventListener('mouseenter', () => css(button, { transform: 'scale(1.08)', boxShadow: '0 8px 24px rgba(0,0,0,0.2)', filter: 'brightness(1.1)' }));
-                button.addEventListener('mouseleave', () => css(button, { transform: 'scale(1)', boxShadow: '0 2px 12px rgba(0,0,0,0.08)', filter: 'brightness(1)' }));
-            }
-            
-            const label = document.createElement('div');
-            label.className = 'pimp-login-label';
-            label.textContent = login;
-            css(label, { position: 'absolute', opacity: '0', pointerEvents: 'none', fontSize: '1px', height: '1px', width: '1px', overflow: 'hidden', clip: 'rect(0,0,0,0)', whiteSpace: 'nowrap' });
-            form.appendChild(label);
-        });
-    }
-
-    async function checkAndSubmit(val, msg, input) {
-        if (!val) return;
-        if (val.includes('@')) val = val.split('@')[0];
-        const email = val + domain;
-
-        if (input) {
-            input.placeholder = 'Vérification en cours…';
-            input.style.borderColor = '#007aff';
+            setTimeout(highlightProfile, 100);
+            setTimeout(highlightProfile, 500);
+            new MutationObserver(() => $('.member-list') && !$('#highlighted-profile-row') && highlightProfile())
+                .observe(document.body, {childList: true, subtree: true});
         }
 
-        GM_xmlhttpRequest({
-            method: 'GET',
-            url: `https://cri.epita.fr/users/${val}`,
-            onload: res => {
-                if (res.status === 404) {
-                    if (input) {
-                        input.placeholder = `Utilisateur "${val}" n'existe pas.`;
-                        input.style.borderColor = '#ff3b30';
-                        input.value = '';
-                        input.focus();
-                    }
-                } else {
-                    if (input) {
-                        input.placeholder = 'xavier.login';
-                        input.style.borderColor = 'rgba(0,0,0,0.08)';
-                        input.value = val;
-                    }
-                    submitForm(email);
-                }
-            },
-            onerror: () => {
-                if (input) {
-                    input.placeholder = 'Impossible de vérifier l\'utilisateur.';
-                    input.style.borderColor = '#ff3b30';
-                }
-            }
-        });
-    }
+        new MutationObserver(updateUI).observe(document.body, {childList: true, subtree: true});
+        setTimeout(updateUI, 50);
+        setTimeout(updateUI, 300);
+        window.addEventListener('resize', updateUI);
+    };
 
-    function submitForm(email) {
-        let form = $('form') || $('input[name="client"], input#client')?.form;
-        if (!form) {
-            form = document.createElement('form');
-            css(form, { display: 'none' });
-            form.method = 'post';
-            form.action = location.href;
-            document.body.appendChild(form);
-        }
 
-        try { form.setAttribute('data-login', email); } catch {}
-
-        let clientField = form.querySelector('input[name="client"]');
-        if (!clientField) {
-            clientField = document.createElement('input');
-            clientField.type = 'hidden';
-            clientField.name = 'client';
-            form.appendChild(clientField);
-        }
-        clientField.value = email;
-
-        const visibleLogin = $('input[type="email"], input[type="text"].login, input.login, input[name="login"], input[name="email"]');
-        if (visibleLogin) visibleLogin.value = email;
-
-        try { 
-            form.submit(); 
-        } catch { 
-            $('button[type="submit"], input[type="submit"]', form)?.click();
-        }
-    }
-
-    async function openCameraScanner(checkAndSubmit, msg) {
-        if (typeof jsQR === 'undefined') {
-            try {
-                eval(await (await fetch('https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js')).text());
-                await new Promise(r => setTimeout(r, 200));
-            } catch (e) {
-                console.error('Failed to load jsQR:', e);
-            }
-            
-            if (typeof jsQR === 'undefined') {
-                console.error('ERREUR: jsQR impossible à charger.');
-                return;
-            }
-        }
+    // QR Scanner (optimized for mobile)
+    const openScanner = async callback => {
+        if (!await loadJsQR()) return console.error('jsQR unavailable');
         
-        if (!navigator.mediaDevices?.getUserMedia) {
-            console.error('Caméra non supportée par ce navigateur.');
-            return;
-        }
-
         const overlay = document.createElement('div');
         css(overlay, {
             position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
-            background: 'rgba(0,0,0,0.9)', zIndex: 99998,
-            display: 'flex', justifyContent: 'center', alignItems: 'center', flexDirection: 'column'
+            background: 'rgba(0,0,0,.9)', zIndex: 99998, display: 'flex',
+            justifyContent: 'center', alignItems: 'center', flexDirection: 'column'
         });
-        document.body.appendChild(overlay);
 
         const video = document.createElement('video');
         video.setAttribute('playsinline', '');
         video.setAttribute('autoplay', '');
         video.setAttribute('muted', '');
         video.muted = true;
-        css(video, { width: '90%', maxWidth: '500px', borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.5)' });
+        css(video, {width: '90%', maxWidth: '500px', borderRadius: '12px'});
         overlay.appendChild(video);
 
-        const statusMsg = document.createElement('div');
-        statusMsg.textContent = 'Initialisation de la caméra...';
-        css(statusMsg, {
-            marginTop: '12px', color: 'white', fontSize: '14px', textAlign: 'center',
-            padding: '8px', background: 'rgba(0,0,0,0.5)', borderRadius: '6px',
-            minHeight: '40px', width: '90%', maxWidth: '500px'
-        });
-        overlay.appendChild(statusMsg);
+        const status = document.createElement('div');
+        status.textContent = 'Initializing...';
+        css(status, {marginTop: '12px', color: 'white', fontSize: '14px', padding: '8px', background: 'rgba(0,0,0,.5)', borderRadius: '6px'});
+        overlay.appendChild(status);
 
-        const closeBtn = document.createElement('button');
-        closeBtn.textContent = '✖ Fermer';
-        css(closeBtn, {
-            marginTop: '12px', padding: '10px 16px', fontSize: '14px',
-            borderRadius: '8px', border: 'none', background: '#d00',
-            color: 'white', cursor: 'pointer'
-        });
+        const closeBtn = createBtn('✖ Close', {marginTop: '12px', padding: '10px 16px', fontSize: '14px', borderRadius: '8px', border: 'none', background: '#d00', color: 'white', cursor: 'pointer'});
         overlay.appendChild(closeBtn);
+        document.body.appendChild(overlay);
 
         let stream, scanning = true;
+        const constraints = [
+            {video: {facingMode: {exact: 'environment'}, width: {ideal: 1280}, height: {ideal: 720}}},
+            {video: {facingMode: 'environment'}},
+            {video: {width: {ideal: 640}, height: {ideal: 480}}},
+            {video: true}
+        ];
 
-        const startCamera = async () => {
-            const constraints = [
-                { video: { facingMode: { exact: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } } },
-                { video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } } },
-                { video: { width: { ideal: 1920 }, height: { ideal: 1080 } } },
-                { video: { width: { ideal: 1280 }, height: { ideal: 720 } } },
-                { video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } } },
-                { video: { width: { ideal: 640 }, height: { ideal: 480 } } },
-                { video: true }
-            ];
-
-            for (const constraint of constraints) {
-                try {
-                    stream = await navigator.mediaDevices.getUserMedia(constraint);
-                    video.srcObject = stream;
-                    
-                    await new Promise((resolve, reject) => {
-                        video.onloadedmetadata = () => video.play().then(resolve).catch(reject);
-                        video.onerror = reject;
-                        setTimeout(() => reject(new Error('Timeout')), 5000);
-                    });
-                    
-                    const settings = stream.getVideoTracks()[0].getSettings();
-                    console.log('Caméra initialisée:', settings.width + 'x' + settings.height, 'facingMode:', settings.facingMode || 'default');
-                    statusMsg.textContent = 'Pointez la caméra vers le QR code';
-                    return true;
-                } catch (err) {
-                    console.log('Tentative échouée:', constraint, err);
-                    if (stream) {
-                        stream.getTracks().forEach(t => t.stop());
-                        stream = null;
-                    }
-                }
+        for (const constraint of constraints) {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia(constraint);
+                video.srcObject = stream;
+                await new Promise((res, rej) => {
+                    video.onloadedmetadata = () => video.play().then(res).catch(rej);
+                    setTimeout(() => rej(new Error('Timeout')), 5000);
+                });
+                status.textContent = 'Point camera at QR code';
+                break;
+            } catch (e) {
+                if (stream) stream.getTracks().forEach(t => t.stop());
+                stream = null;
             }
-            return false;
-        };
+        }
 
-        const success = await startCamera();
-        if (!success) {
-            statusMsg.textContent = 'Erreur d\'accès à la caméra. Vérifiez les permissions.';
+        if (!stream) {
+            status.textContent = 'Camera access denied';
             setTimeout(() => overlay.remove(), 2000);
             return;
         }
 
         const cleanup = () => {
             scanning = false;
-            if (stream) {
-                stream.getTracks().forEach(t => t.stop());
-                stream = null;
-            }
-            if (overlay.parentNode) overlay.remove();
+            if (stream) stream.getTracks().forEach(t => t.stop());
+            overlay.remove();
         };
-
         closeBtn.addEventListener('click', cleanup);
 
         const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d', { willReadFrequently: true });
-        let lastScanTime = 0, scanCount = 0;
-        const scanInterval = 150;
+        const ctx = canvas.getContext('2d', {willReadFrequently: true});
+        let lastScan = 0;
+        const scanDelay = 200; // Faster on mobile
 
-        function tick() {
+        const tick = () => {
             if (!scanning) return;
-            
             const now = Date.now();
-            if (video.readyState === video.HAVE_ENOUGH_DATA && now - lastScanTime >= scanInterval) {
-                lastScanTime = now;
-                scanCount++;
+            
+            if (video.readyState === video.HAVE_ENOUGH_DATA && now - lastScan >= scanDelay) {
+                lastScan = now;
+                const w = video.videoWidth, h = video.videoHeight;
                 
-                try {
-                    const width = video.videoWidth, height = video.videoHeight;
+                if (w > 0 && h > 0) {
+                    canvas.width = w;
+                    canvas.height = h;
+                    ctx.drawImage(video, 0, 0, w, h);
+                    const data = ctx.getImageData(0, 0, w, h);
+                    const code = jsQR(data.data, w, h, {inversionAttempts: 'dontInvert'}); // Faster
                     
-                    if (width > 0 && height > 0) {
-                        canvas.width = width;
-                        canvas.height = height;
-                        ctx.drawImage(video, 0, 0, width, height);
-                        const imageData = ctx.getImageData(0, 0, width, height);
-                        
-                        if (scanCount % 10 === 0) {
-                            statusMsg.textContent = `Scan en cours... (${scanCount}) - ${width}x${height}`;
-                            statusMsg.style.color = '#fff';
-                        }
-                        
-                        if (typeof jsQR !== 'undefined') {
-                            const code = jsQR(imageData.data, width, height, { inversionAttempts: "attemptBoth" });
-                            
-                            if (code?.data) {
-                                statusMsg.textContent = '✓ QR Code scanné ! Login: ' + code.data;
-                                statusMsg.style.color = '#0f0';
-                                cleanup();
-                                setTimeout(() => checkAndSubmit(code.data), 100);
-                                return;
-                            }
-                        } else {
-                            statusMsg.textContent = 'ERREUR: jsQR non chargé ! Rafraîchir la page';
-                            statusMsg.style.color = '#f00';
-                        }
-                    } else if (scanCount % 10 === 0) {
-                        statusMsg.textContent = `Attente vidéo... (${width}x${height})`;
-                        statusMsg.style.color = '#ff0';
+                    if (code?.data) {
+                        status.textContent = '✓ Scanned!';
+                        cleanup();
+                        callback(code.data);
+                        return;
                     }
-                } catch (err) {
-                    console.error('Erreur scan:', err);
-                    statusMsg.textContent = 'Erreur: ' + err.message;
-                    statusMsg.style.color = '#f00';
                 }
             }
             requestAnimationFrame(tick);
-        }
-        
-        setTimeout(() => tick(), 300);
-    }
-
-    function createHardcoreButton() {
-        const hardcoreBtn = document.createElement('button');
-        hardcoreBtn.id = 'hardcore-mode-btn';
-        hardcoreBtn.type = 'button';
-        hardcoreBtn.title = 'Hardcore Mode';
-        hardcoreBtn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C12 2 7 6 7 11C7 13.76 9.24 16 12 16C14.76 16 17 13.76 17 11C17 6 12 2 12 2Z" /><path d="M12 16C12 16 9 18 9 20.5C9 21.88 10.12 23 11.5 23C12.88 23 14 21.88 14 20.5C14 18 12 16 12 16Z" /></svg>`;
-        css(hardcoreBtn, {
-            position: 'fixed', top: '20px', right: '20px', padding: '12px', borderRadius: '12px',
-            border: 'none', background: 'rgba(255,255,255,0.95)', color: '#8e8e93',
-            cursor: 'pointer', transition: 'all 0.2s ease', boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
-            zIndex: 100000, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
-            fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif'
-        });
-        hardcoreBtn.addEventListener('mouseenter', () => css(hardcoreBtn, { transform: 'scale(1.1)', boxShadow: '0 4px 20px rgba(0,0,0,0.15)' }));
-        hardcoreBtn.addEventListener('mouseleave', () => css(hardcoreBtn, { transform: 'scale(1)', boxShadow: '0 2px 12px rgba(0,0,0,0.08)' }));
-        hardcoreBtn.addEventListener('click', toggleHardcoreMode);
-        document.body.appendChild(hardcoreBtn);
-    }
-
-    function enhanceProductDisplay() {
-        const enhance = product => {
-            if (product.dataset.enhanced) return;
-            product.dataset.enhanced = 'true';
-            
-            const price = product.getAttribute('data-price');
-            if (!price) return;
-            
-            const priceTag = document.createElement('div');
-            priceTag.textContent = price + ' €';
-            css(priceTag, {
-                position: 'absolute', bottom: '8px', right: '8px', background: 'rgba(0,0,0,0.75)',
-                backdropFilter: 'blur(10px)', color: 'white', padding: '6px 12px', borderRadius: '10px',
-                fontSize: '14px', fontWeight: '600',
-                fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.3)', pointerEvents: 'none', zIndex: '10'
-            });
-            
-            css(product, { position: 'relative', transition: 'transform 0.2s ease, box-shadow 0.2s ease' });
-            product.appendChild(priceTag);
-            
-            product.addEventListener('mouseenter', () => {
-                css(product, { transform: 'translateY(-4px) scale(1.02)', boxShadow: '0 8px 24px rgba(0,0,0,0.15)' });
-                priceTag.style.background = 'rgba(0,122,255,0.9)';
-            });
-            product.addEventListener('mouseleave', () => {
-                css(product, { transform: 'translateY(0) scale(1)', boxShadow: '' });
-                priceTag.style.background = 'rgba(0,0,0,0.75)';
-            });
         };
-
-        new MutationObserver(() => {
-            const products = $$('.article-tile-item');
-            if (products.length) {
-                products.forEach(enhance);
-            }
-        }).observe(document.body, { childList: true, subtree: true });
         
-        setTimeout(() => $$('.article-tile-item').forEach(enhance), 100);
-    }
+        setTimeout(tick, 300);
+    };
 
-    function createBasketControls() {
-        const basketData = { items: {}, total: 0, userBalance: null };
+    // Basket UI
+    const createBasketUI = () => {
+        const basketData = {items: {}, total: 0, balance: null};
 
-        // Create floating total display
+        // Floating total
         const floatingTotal = document.createElement('div');
-        floatingTotal.id = 'pimp-floating-total';
         css(floatingTotal, {
             position: 'fixed', top: '20px', left: '50%', transform: 'translateX(-50%)',
-            background: 'linear-gradient(135deg, #007aff 0%, #0051d5 100%)',
+            background: 'linear-gradient(135deg,#007aff 0%,#0051d5 100%)',
             color: 'white', padding: '16px 32px', borderRadius: '16px',
-            fontSize: '20px', fontWeight: '700', boxShadow: '0 8px 32px rgba(0,122,255,0.4)',
-            zIndex: 100000, display: 'none', flexDirection: 'column', gap: '4px',
-            fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif',
-            backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
-            animation: 'fadeIn 0.3s ease', alignItems: 'center'
+            fontSize: 'clamp(16px,20px,5vw)', fontWeight: '700',
+            boxShadow: '0 8px 32px rgba(0,122,255,.4)', zIndex: 100000, display: 'none',
+            flexDirection: 'column', gap: '4px', animation: 'fadeIn .3s ease', alignItems: 'center',
+            fontFamily: '-apple-system,BlinkMacSystemFont,"SF Pro Display",Roboto,sans-serif'
         });
-        floatingTotal.innerHTML = '<div style="display: flex; align-items: center; gap: 12px; font-size: 24px;"><span>Total:</span><span id="floating-basket-total">0,00 €</span></div><div id="floating-basket-remaining" style="font-size: 14px; opacity: 0.9;"></div>';
+        floatingTotal.innerHTML = '<div style="display:flex;align-items:center;gap:12px"><span>Total:</span><span id="floating-basket-total">0,00 €</span></div><div id="floating-basket-remaining" style="font-size:.7em;opacity:.9"></div>';
         document.body.appendChild(floatingTotal);
 
-        // Fetch user balance
-        const fetchUserBalance = async () => {
+        // Fetch balance
+        const fetchBalance = async () => {
             try {
-                // Get balance directly from the current basket page
-                const balanceLink = $('a.btn[href*="/credit-student/"]');
-                if (balanceLink) {
-                    const balanceText = balanceLink.textContent || balanceLink.innerText;
-                    // Extract balance from text: "Solde : X€" or "Solde : -X€" or "Solde : X,XX€"
-                    const balanceMatch = balanceText.match(/Solde\s*:\s*([-]?\d+(?:[,\.]\d+)?)\s*€/i);
-                    if (balanceMatch) {
-                        const balanceStr = balanceMatch[1].replace(',', '.');
-                        basketData.userBalance = parseFloat(balanceStr);
-                        console.log('Solde récupéré:', basketData.userBalance, '€');
+                const link = $('a.btn[href*="/credit-student/"]');
+                if (link) {
+                    const match = (link.textContent || link.innerText).match(/Solde\s*:\s*([-]?\d+(?:[,\.]\d+)?)\s*€/i);
+                    if (match) {
+                        basketData.balance = parseFloat(match[1].replace(',', '.'));
                         updateBasket();
-                    } else {
-                        console.log('Format de solde non reconnu, affichage normal sans vérification');
                     }
-                } else {
-                    console.log('Solde non trouvé sur la page, affichage normal sans vérification');
                 }
-            } catch (err) {
-                console.error('Erreur lors de la récupération du solde:', err);
-            }
+            } catch (e) {}
         };
         
-        // Wait for page to load, then fetch balance
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', fetchUserBalance);
-        } else {
-            fetchUserBalance();
-        }
-        
-        // Also retry after a short delay to handle dynamic content
-        setTimeout(fetchUserBalance, 100);
-        setTimeout(fetchUserBalance, 500);
+        if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fetchBalance);
+        else fetchBalance();
+        setTimeout(fetchBalance, 100);
+        setTimeout(fetchBalance, 500);
 
-        const basketPanel = document.createElement('div');
-        basketPanel.id = 'pimp-basket-panel';
-        css(basketPanel, {
-            position: 'fixed', bottom: '0', left: '50%', transform: 'translateX(-50%)',
-            width: '100%', maxWidth: '800px',
-            padding: '20px 24px 0 24px',
-            fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif',
+        // Panel
+        const panel = document.createElement('div');
+        css(panel, {
+            position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)',
+            width: '100%', maxWidth: '800px', padding: '20px 24px 0',
+            fontFamily: '-apple-system,BlinkMacSystemFont,"SF Pro Display",Roboto,sans-serif',
             zIndex: 99998, display: 'none', flexDirection: 'column', gap: '16px',
-            borderTop: '1px solid rgba(0,0,0,0.08)'
+            borderTop: '1px solid rgba(0,0,0,.08)'
         });
 
         const totalRow = document.createElement('div');
-        css(totalRow, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '24px', fontWeight: '700', color: '#1d1d1f' });
+        css(totalRow, {display: 'flex', justifyContent: 'space-between', fontSize: 'clamp(18px,24px,6vw)', fontWeight: '700', color: '#1d1d1f'});
         totalRow.innerHTML = '<span>Total</span><span id="basket-total">0,00 €</span>';
-        basketPanel.appendChild(totalRow);
+        panel.appendChild(totalRow);
 
-        const paymentRow = document.createElement('div');
-        css(paymentRow, { display: 'flex', gap: '12px' });
+        const payRow = document.createElement('div');
+        css(payRow, {display: 'flex', gap: '12px', flexWrap: 'wrap'});
 
-        const createPayBtn = (text, gradient) => {
-            const btn = document.createElement('button');
-            btn.textContent = text;
-            css(btn, {
-                flex: '1', padding: '16px', borderRadius: '12px', border: 'none',
-                background: gradient, color: 'white', fontSize: '18px', fontWeight: '700',
-                cursor: 'pointer', boxShadow: `0 4px 16px ${text === 'CA$H' ? 'rgba(52,199,89,0.3)' : 'rgba(0,122,255,0.3)'}`,
-                transition: 'all 0.2s ease'
-            });
-            const shadowHover = text === 'CA$H' ? 'rgba(52,199,89,0.4)' : 'rgba(0,122,255,0.4)';
-            btn.addEventListener('mouseenter', () => css(btn, { transform: 'translateY(-2px)', boxShadow: `0 6px 24px ${shadowHover}` }));
-            btn.addEventListener('mouseleave', () => css(btn, { transform: 'translateY(0)', boxShadow: `0 4px 16px ${text === 'CA$H' ? 'rgba(52,199,89,0.3)' : 'rgba(0,122,255,0.3)'}` }));
-            return btn;
-        };
+        const cashBtn = createBtn('CA$H', {
+            flex: '1', minWidth: '140px', padding: '16px', borderRadius: '12px', border: 'none',
+            background: 'linear-gradient(135deg,#34c759 0%,#30d158 100%)', color: 'white',
+            fontSize: '18px', fontWeight: '700', cursor: 'pointer',
+            boxShadow: '0 4px 16px rgba(52,199,89,.3)', transition: 'all .2s ease'
+        }, {
+            transform: 'translateY(-2px)', boxShadow: '0 6px 24px rgba(52,199,89,.4)'
+        });
 
-        const cashBtn = createPayBtn('CA$H', 'linear-gradient(135deg, #34c759 0%, #30d158 100%)');
-        const creditBtn = createPayBtn('CREDIT', 'linear-gradient(135deg, #007aff 0%, #0051d5 100%)');
-        paymentRow.appendChild(cashBtn);
-        paymentRow.appendChild(creditBtn);
-        basketPanel.appendChild(paymentRow);
-        document.body.appendChild(basketPanel);
+        const creditBtn = createBtn('CREDIT', {
+            flex: '1', minWidth: '140px', padding: '16px', borderRadius: '12px', border: 'none',
+            background: 'linear-gradient(135deg,#007aff 0%,#0051d5 100%)', color: 'white',
+            fontSize: '18px', fontWeight: '700', cursor: 'pointer',
+            boxShadow: '0 4px 16px rgba(0,122,255,.3)', transition: 'all .2s ease'
+        }, {
+            transform: 'translateY(-2px)', boxShadow: '0 6px 24px rgba(0,122,255,.4)'
+        });
+
+        payRow.appendChild(cashBtn);
+        payRow.appendChild(creditBtn);
+        panel.appendChild(payRow);
+        document.body.appendChild(panel);
 
         const updateBasket = () => {
             let total = 0, hasItems = false;
-            Object.keys(basketData.items).forEach(itemId => {
-                const qty = basketData.items[itemId].quantity;
-                if (qty > 0) {
+            Object.values(basketData.items).forEach(item => {
+                if (item.quantity > 0) {
                     hasItems = true;
-                    total += basketData.items[itemId].price * qty;
+                    total += item.price * item.quantity;
                 }
             });
             basketData.total = total;
-            const formattedTotal = total.toFixed(2).replace('.', ',') + ' €';
-            const basketTotalEl = $('#basket-total');
-            const floatingBasketTotalEl = $('#floating-basket-total');
+            const formatted = total.toFixed(2).replace('.', ',') + ' €';
             
-            if (basketTotalEl) basketTotalEl.textContent = formattedTotal;
-            if (floatingBasketTotalEl) floatingBasketTotalEl.textContent = formattedTotal;
+            $('#basket-total').textContent = formatted;
+            $('#floating-basket-total').textContent = formatted;
             
-            // Update color and remaining balance display
-            if (basketData.userBalance !== null && total > 0) {
-                const remaining = basketData.userBalance - total;
-                const isAffordable = total <= basketData.userBalance;
-                const gradient = isAffordable 
-                    ? 'linear-gradient(135deg, #34c759 0%, #30d158 100%)' 
-                    : 'linear-gradient(135deg, #ff3b30 0%, #ff9500 100%)';
+            if (basketData.balance !== null && total > 0) {
+                const remaining = basketData.balance - total;
+                const affordable = total <= basketData.balance;
+                const gradient = affordable ? 'linear-gradient(135deg,#34c759 0%,#30d158 100%)' : 'linear-gradient(135deg,#ff3b30 0%,#ff9500 100%)';
                 
-                const floatingTotalEl = $('#pimp-floating-total');
-                if (floatingTotalEl) {
-                    floatingTotalEl.style.background = gradient;
-                    floatingTotalEl.style.boxShadow = isAffordable 
-                        ? '0 8px 32px rgba(52,199,89,0.4)' 
-                        : '0 8px 32px rgba(255,59,48,0.4)';
-                }
+                css(floatingTotal, {
+                    background: gradient,
+                    boxShadow: affordable ? '0 8px 32px rgba(52,199,89,.4)' : '0 8px 32px rgba(255,59,48,.4)'
+                });
                 
-                const remainingEl = $('#floating-basket-remaining');
-                if (remainingEl) {
-                    remainingEl.textContent = isAffordable 
-                        ? `Reste: ${remaining.toFixed(2).replace('.', ',')} €`
-                        : `Solde insuffisant (${Math.abs(remaining).toFixed(2).replace('.', ',')} € manquants)`;
-                }
+                $('#floating-basket-remaining').textContent = affordable 
+                    ? `Remaining: ${remaining.toFixed(2).replace('.', ',')} €`
+                    : `Insufficient (${Math.abs(remaining).toFixed(2).replace('.', ',')} € short)`;
             }
             
-            basketPanel.style.display = hasItems ? 'flex' : 'none';
-            const floatingTotalEl = $('#pimp-floating-total');
-            if (floatingTotalEl) floatingTotalEl.style.display = hasItems ? 'flex' : 'none';
+            panel.style.display = hasItems ? 'flex' : 'none';
+            floatingTotal.style.display = hasItems ? 'flex' : 'none';
         };
 
-        const enhanceProductWithControls = product => {
-            if (product.dataset.controlsAdded) return;
-            product.dataset.controlsAdded = 'true';
-
-            const productId = product.id.replace('article-item-', '');
+        // Enhance products
+        const enhanceProduct = product => {
+            if (product.dataset.enhanced) return;
+            product.dataset.enhanced = 'true';
+            
+            const id = product.id.replace('article-item-', '');
             const priceStr = product.getAttribute('data-price');
             if (!priceStr) return;
 
             const price = parseFloat(priceStr.replace(',', '.'));
-            basketData.items[productId] = { quantity: 0, price, href: product.getAttribute('href') };
+            basketData.items[id] = {quantity: 0, price, href: product.getAttribute('href')};
             product.addEventListener('click', e => e.preventDefault());
 
-            const controls = document.createElement('div');
-            css(controls, { position: 'absolute', bottom: '8px', left: '8px', display: 'flex', gap: '6px', alignItems: 'center', pointerEvents: 'auto', zIndex: '20' });
+            // Price tag
+            const tag = document.createElement('div');
+            tag.textContent = price + ' €';
+            css(tag, {
+                position: 'absolute', bottom: '8px', right: '8px',
+                background: 'rgba(0,0,0,.75)', backdropFilter: 'blur(10px)',
+                color: 'white', padding: '6px 12px', borderRadius: '10px',
+                fontSize: 'clamp(12px,14px,3.5vw)', fontWeight: '600',
+                boxShadow: '0 2px 8px rgba(0,0,0,.3)', pointerEvents: 'none', zIndex: 10
+            });
+            product.appendChild(tag);
 
-            const createBtn = (text, bg) => {
+            // Controls
+            const controls = document.createElement('div');
+            css(controls, {position: 'absolute', bottom: '8px', left: '8px', display: 'flex', gap: '6px', alignItems: 'center', zIndex: 20});
+
+            const createCtrlBtn = (text, bg) => {
                 const btn = document.createElement('button');
                 btn.textContent = text;
                 css(btn, {
                     width: '28px', height: '28px', borderRadius: '8px', border: 'none',
                     background: bg, color: 'white', fontSize: '18px', fontWeight: '700',
                     cursor: 'pointer', display: text === '−' ? 'none' : 'flex',
-                    alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s ease'
+                    alignItems: 'center', justifyContent: 'center', transition: 'all .2s ease'
                 });
                 return btn;
             };
 
-            const minusBtn = createBtn('−', 'rgba(255,59,48,0.9)');
-            const quantityDisplay = document.createElement('div');
-            css(quantityDisplay, {
+            const minusBtn = createCtrlBtn('−', 'rgba(255,59,48,.9)');
+            const qtyDisplay = document.createElement('div');
+            css(qtyDisplay, {
                 minWidth: '28px', padding: '4px 8px', borderRadius: '8px',
-                background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)', color: 'white',
+                background: 'rgba(0,0,0,.85)', color: 'white',
                 fontSize: '14px', fontWeight: '700', textAlign: 'center', display: 'none'
             });
-            quantityDisplay.textContent = '0';
-            const plusBtn = createBtn('+', 'rgba(52,199,89,0.9)');
+            qtyDisplay.textContent = '0';
+            const plusBtn = createCtrlBtn('+', 'rgba(52,199,89,.9)');
 
             const updateControls = () => {
-                const qty = basketData.items[productId].quantity;
-                quantityDisplay.textContent = qty;
-                const priceTag = product.querySelector('div[style*="position: absolute"][style*="bottom: 8px"][style*="right: 8px"]');
+                const qty = basketData.items[id].quantity;
+                qtyDisplay.textContent = qty;
                 
                 if (qty > 0) {
                     minusBtn.style.display = 'flex';
-                    quantityDisplay.style.display = 'block';
-                    if (priceTag) priceTag.style.display = 'none';
+                    qtyDisplay.style.display = 'block';
+                    tag.style.display = 'none';
                 } else {
                     minusBtn.style.display = 'none';
-                    quantityDisplay.style.display = 'none';
-                    if (priceTag) priceTag.style.display = 'block';
+                    qtyDisplay.style.display = 'none';
+                    tag.style.display = 'block';
                 }
             };
 
             plusBtn.addEventListener('click', e => {
                 e.preventDefault();
                 e.stopPropagation();
-                basketData.items[productId].quantity++;
+                basketData.items[id].quantity++;
                 updateControls();
                 updateBasket();
             });
@@ -919,86 +659,107 @@
             minusBtn.addEventListener('click', e => {
                 e.preventDefault();
                 e.stopPropagation();
-                if (basketData.items[productId].quantity > 0) {
-                    basketData.items[productId].quantity--;
+                if (basketData.items[id].quantity > 0) {
+                    basketData.items[id].quantity--;
                     updateControls();
                     updateBasket();
                 }
             });
 
             controls.appendChild(minusBtn);
-            controls.appendChild(quantityDisplay);
+            controls.appendChild(qtyDisplay);
             controls.appendChild(plusBtn);
             product.appendChild(controls);
+
+            // Hover effect
+            css(product, {position: 'relative', transition: 'transform .2s ease, box-shadow .2s ease'});
+            product.addEventListener('mouseenter', () => {
+                css(product, {transform: 'translateY(-4px) scale(1.02)', boxShadow: '0 8px 24px rgba(0,0,0,.15)'});
+                tag.style.background = 'rgba(0,122,255,.9)';
+            });
+            product.addEventListener('mouseleave', () => {
+                css(product, {transform: 'translateY(0) scale(1)', boxShadow: ''});
+                tag.style.background = 'rgba(0,0,0,.75)';
+            });
         };
 
-        new MutationObserver(() => $$('.article-tile-item').forEach(enhanceProductWithControls))
-            .observe(document.body, { childList: true, subtree: true });
-        setTimeout(() => $$('.article-tile-item').forEach(enhanceProductWithControls), 100);
+        new MutationObserver(() => $$('.article-tile-item').forEach(enhanceProduct))
+            .observe(document.body, {childList: true, subtree: true});
+        setTimeout(() => $$('.article-tile-item').forEach(enhanceProduct), 100);
 
-        const submitBasket = method => {
+        // Submit
+        const submit = method => {
             const basketId = location.pathname.match(/\/basket\/(\d+)/)?.[1];
             if (!basketId) return;
 
-            const transactionAmount = basketData.total;
-            
             const form = document.createElement('form');
             form.method = 'POST';
             form.action = `/kiosk/basket/${basketId}/checkout/${method}/`;
-            css(form, { display: 'none' });
+            css(form, {display: 'none'});
 
-            const csrfInput = document.createElement('input');
-            csrfInput.type = 'hidden';
-            csrfInput.name = 'csrfmiddlewaretoken';
-            const csrfToken = $('input[name="csrfmiddlewaretoken"]')?.value;
-            if (csrfToken) csrfInput.value = csrfToken;
-            form.appendChild(csrfInput);
+            const csrf = $('input[name="csrfmiddlewaretoken"]')?.value;
+            if (csrf) {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'csrfmiddlewaretoken';
+                input.value = csrf;
+                form.appendChild(input);
+            }
 
-            Object.keys(basketData.items).forEach(itemId => {
-                const qty = basketData.items[itemId].quantity;
+            Object.keys(basketData.items).forEach(id => {
+                const qty = basketData.items[id].quantity;
                 if (qty > 0) {
                     ['article', 'quantity'].forEach((name, i) => {
                         const input = document.createElement('input');
                         input.type = 'hidden';
                         input.name = name;
-                        input.value = i === 0 ? itemId : qty;
+                        input.value = i === 0 ? id : qty;
                         form.appendChild(input);
                     });
                 }
             });
 
-            form.addEventListener('submit', async () => {
-                try {
-                    // After form submission, the page will reload
-                    // We can show a quick success message before reload
-                    const successMsg = document.createElement('div');
-                    css(successMsg, {
-                        position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
-                        background: 'linear-gradient(135deg, #34c759 0%, #30d158 100%)',
-                        color: 'white', padding: '32px 48px', borderRadius: '16px',
-                        fontSize: '18px', fontWeight: '600', textAlign: 'center',
-                        boxShadow: '0 8px 32px rgba(52,199,89,0.4)', zIndex: 100001,
-                        fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif',
-                        backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
-                        animation: 'fadeIn 0.3s ease'
-                    });
-                    successMsg.innerHTML = `
-                        <div style="font-size: 48px; margin-bottom: 16px;">✓</div>
-                        <div style="font-size: 20px; font-weight: 700; margin-bottom: 8px;">Transaction réussie</div>
-                        <div style="font-size: 16px; opacity: 0.95;">Montant: ${transactionAmount.toFixed(2).replace('.', ',')} €</div>
-                    `;
-                    document.body.appendChild(successMsg);
-                } catch (err) {
-                    console.error('Erreur lors de l\'affichage du message de succès:', err);
-                }
+            form.addEventListener('submit', () => {
+                const msg = document.createElement('div');
+                css(msg, {
+                    position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
+                    background: 'linear-gradient(135deg,#34c759 0%,#30d158 100%)',
+                    color: 'white', padding: '32px 48px', borderRadius: '16px',
+                    fontSize: '18px', fontWeight: '600', textAlign: 'center',
+                    boxShadow: '0 8px 32px rgba(52,199,89,.4)', zIndex: 100001,
+                    animation: 'fadeIn .3s ease'
+                });
+                msg.innerHTML = `<div style="font-size:48px;margin-bottom:16px">✓</div><div style="font-size:20px;font-weight:700;margin-bottom:8px">Transaction successful</div><div style="font-size:16px;opacity:.95">Amount: ${basketData.total.toFixed(2).replace('.', ',')} €</div>`;
+                document.body.appendChild(msg);
             });
 
             document.body.appendChild(form);
             form.submit();
         };
 
-        cashBtn.addEventListener('click', () => submitBasket('cash'));
-        creditBtn.addEventListener('click', () => submitBasket('credit'));
+        cashBtn.addEventListener('click', () => submit('cash'));
+        creditBtn.addEventListener('click', () => submit('credit'));
+    };
+
+    // Initialize
+    injectStyles();
+    
+    if (state.isBasket) {
+        createBasketUI();
+        const hardcoreBtn = createBtn(`<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C12 2 7 6 7 11C7 13.76 9.24 16 12 16C14.76 16 17 13.76 17 11C17 6 12 2 12 2Z"/><path d="M12 16C12 16 9 18 9 20.5C9 21.88 10.12 23 11.5 23C12.88 23 14 21.88 14 20.5C14 18 12 16 12 16Z"/></svg>`, {
+            position: 'fixed', top: '20px', right: '20px', padding: '12px', borderRadius: '12px',
+            border: 'none', background: 'rgba(255,255,255,.95)', color: '#8e8e93',
+            cursor: 'pointer', transition: 'all .2s ease', boxShadow: '0 2px 12px rgba(0,0,0,.08)',
+            zIndex: 100000, display: 'flex', alignItems: 'center', justifyContent: 'center'
+        }, {
+            transform: 'scale(1.1)', boxShadow: '0 4px 20px rgba(0,0,0,.15)'
+        });
+        hardcoreBtn.id = 'hardcore-mode-btn';
+        hardcoreBtn.title = 'Hardcore Mode';
+        hardcoreBtn.addEventListener('click', toggleHardcore);
+        document.body.appendChild(hardcoreBtn);
+    } else {
+        createGroupUI();
     }
 
 })();
