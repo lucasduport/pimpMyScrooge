@@ -2,9 +2,10 @@
 // @name         PimpMyScrooge
 // @namespace    https://scrooge.assistants.epita.fr/*
 // @version      2.0
-// @description  Quick search bar + QR code scanner + Check user + Highlight my login + Autocomplete + Hardcore Mode + Better Basket
+// @description  Quick search bar + QR code scanner + Check user + Highlight my login + Autocomplete + Hardcore Mode + Better Basket + Scrooge Wrapped
 // @match        https://scrooge.assistants.epita.fr/kiosk/group/*
 // @match        https://scrooge.assistants.epita.fr/kiosk/basket/*
+// @match        https://scrooge.assistants.epita.fr/profile/*operations*
 // @grant        GM_xmlhttpRequest
 // @connect      cri.epita.fr
 // @run-at       document-idle
@@ -35,7 +36,8 @@
         hardcore: false,
         hardcoreTimer: null,
         jsQRLoaded: false,
-        isBasket: location.pathname.includes('/basket/')
+        isBasket: location.pathname.includes('/basket/'),
+        isOperations: location.pathname.includes('/operations/') && !location.pathname.match(/\/\d+\/?$/)
     };
 
     // Lazy load jsQR only when needed
@@ -99,6 +101,21 @@
             color: '#8e8e93',
             boxShadow: '0 2px 12px rgba(0,0,0,.08)'
         });
+    };
+
+    const createHardcoreBtn = () => {
+        const btn = createBtn(`<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C12 2 7 6 7 11C7 13.76 9.24 16 12 16C14.76 16 17 13.76 17 11C17 6 12 2 12 2Z"/><path d="M12 16C12 16 9 18 9 20.5C9 21.88 10.12 23 11.5 23C12.88 23 14 21.88 14 20.5C14 18 12 16 12 16Z"/></svg>`, {
+            position: 'fixed', top: '20px', right: '20px', padding: '12px', borderRadius: '12px',
+            border: 'none', background: 'rgba(255,255,255,.95)', color: '#8e8e93',
+            cursor: 'pointer', transition: 'all .2s ease', boxShadow: '0 2px 12px rgba(0,0,0,.08)',
+            zIndex: 100000, display: 'flex', alignItems: 'center', justifyContent: 'center'
+        }, {
+            transform: 'scale(1.1)', boxShadow: '0 4px 20px rgba(0,0,0,.15)'
+        });
+        btn.id = 'hardcore-mode-btn';
+        btn.title = 'Hardcore Mode';
+        btn.addEventListener('click', toggleHardcore);
+        return btn;
     };
 
     // Button factory
@@ -767,10 +784,139 @@
         creditBtn.addEventListener('click', () => submit('credit'));
     };
 
+    // Scrooge Wrapped UI
+    const createWrappedUI = () => {
+        const wrappedBtn = createBtn('🎄 Scrooge Wrapped', {
+            position: 'fixed', top: '20px', right: '20px', padding: '12px 20px', borderRadius: '12px',
+            border: 'none', background: 'linear-gradient(135deg,#ff3b30 0%,#ff9500 100%)',
+            color: 'white', cursor: 'pointer', transition: 'all .2s ease',
+            boxShadow: '0 4px 16px rgba(255,59,48,.3)', zIndex: 100000, fontSize: '14px', fontWeight: '600'
+        }, {
+            transform: 'scale(1.05)', boxShadow: '0 6px 24px rgba(255,59,48,.4)'
+        });
+        wrappedBtn.addEventListener('click', generateWrapped);
+        document.body.appendChild(wrappedBtn);
+    };
+
+    const fetchOperation = async url => {
+        const response = await new Promise((resolve, reject) => GM_xmlhttpRequest({method: 'GET', url, onload: resolve, onerror: reject}));
+        const doc = new DOMParser().parseFromString(response.responseText, 'text/html');
+        const type = Array.from(doc.querySelectorAll('dt')).find(dt => dt.textContent.trim() === 'Type')?.nextElementSibling?.textContent.trim();
+        const valueEl = Array.from(doc.querySelectorAll('dt')).find(dt => dt.textContent.trim() === 'Valeur')?.nextElementSibling;
+        const value = valueEl ? parseFloat(valueEl.textContent.replace(',', '.').replace('€', '').trim()) : 0;
+        const table = doc.querySelector('table.table');
+        const articles = table ? $$('tbody tr', table).map(row => {
+            const cells = $$('td', row);
+            return cells.length >= 2 ? {name: cells[0].textContent.trim(), qty: parseInt(cells[1].textContent.trim())} : null;
+        }).filter(a => a && a.name && !isNaN(a.qty)) : [];
+        return {type, value, articles};
+    };
+
+    const generateWrapped = async () => {
+        const modal = document.createElement('div');
+        css(modal, {
+            position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
+            background: 'rgba(0,0,0,.8)', zIndex: 100001, display: 'flex',
+            justifyContent: 'center', alignItems: 'center', animation: 'fadeIn .3s ease'
+        });
+
+        const content = document.createElement('div');
+        css(content, {
+            background: 'white', borderRadius: '16px', padding: '32px', maxWidth: '600px',
+            maxHeight: '80vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.3)',
+            fontFamily: '-apple-system,BlinkMacSystemFont,"SF Pro Display",Roboto,sans-serif'
+        });
+
+        const header = document.createElement('div');
+        header.innerHTML = '<h2 style="text-align:center;margin-bottom:24px;color:#1d1d1f">🎄 Scrooge Wrapped 2025</h2>';
+        content.appendChild(header);
+
+        const loading = document.createElement('div');
+        loading.textContent = 'Analyzing your transactions...';
+        css(loading, {textAlign: 'center', fontSize: '18px', color: '#8e8e93'});
+        content.appendChild(loading);
+
+        modal.appendChild(content);
+        document.body.appendChild(modal);
+
+        const closeModal = () => modal.remove();
+
+        const handleKeydown = e => { if (e.key === 'Escape') closeModal(); };
+        document.addEventListener('keydown', handleKeydown);
+        modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });
+
+        try {
+            const baseUrl = location.origin;
+            const opLinks = $$('a[href*="/operations/"]').map(a => baseUrl + a.getAttribute('href')).filter(href => href.match(/\/operations\/\d+\/?$/));
+            const uniqueOps = [...new Set(opLinks)];
+
+            const stats = {totalOps: 0, articles: {}, totalArticles: 0, totalSpent: 0};
+
+            for (const url of uniqueOps) {
+                try {
+                    const {type, value, articles} = await fetchOperation(url);
+                    if (type === 'Transaction' && articles.length > 0) {
+                        stats.totalOps++;
+                        articles.forEach(({name, qty}) => {
+                            stats.articles[name] = (stats.articles[name] || 0) + qty;
+                            stats.totalArticles += qty;
+                        });
+                        if (value > 0) stats.totalSpent += value;
+                    }
+                } catch (e) { console.error('Error fetching operation:', url, e); }
+            }
+
+            const sortedArticles = Object.entries(stats.articles).sort((a, b) => b[1] - a[1]);
+
+            content.innerHTML = `
+                <h2 style="text-align:center;margin-bottom:24px;color:#1d1d1f">🎄 Scrooge Wrapped 2025</h2>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:20px;margin-bottom:32px">
+                    <div style="text-align:center;padding:20px;background:linear-gradient(135deg,#007aff,#0051d5);color:white;border-radius:12px">
+                        <div style="font-size:32px;font-weight:700">${stats.totalOps}</div>
+                        <div style="font-size:14px;opacity:.9">Transactions</div>
+                    </div>
+                    <div style="text-align:center;padding:20px;background:linear-gradient(135deg,#34c759,#30d158);color:white;border-radius:12px">
+                        <div style="font-size:32px;font-weight:700">${stats.totalArticles}</div>
+                        <div style="font-size:14px;opacity:.9">Articles achetés</div>
+                    </div>
+                    <div style="text-align:center;padding:20px;background:linear-gradient(135deg,#ff9500,#ff3b30);color:white;border-radius:12px">
+                        <div style="font-size:32px;font-weight:700">${stats.totalSpent.toFixed(2).replace('.', ',')} €</div>
+                        <div style="font-size:14px;opacity:.9">Dépensés</div>
+                    </div>
+                </div>
+                <h3 style="margin-bottom:16px;color:#1d1d1f">Top Articles</h3>
+                <div style="max-height:300px;overflow-y:auto">
+                    ${sortedArticles.slice(0, 10).map(([name, qty], i) => `
+                        <div style="display:flex;justify-content:space-between;padding:12px;border-bottom:1px solid #f0f0f0">
+                            <span>${i+1}. ${name}</span>
+                            <span style="font-weight:600">${qty}</span>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+
+            const closeBtn = createBtn('Fermer', {
+                marginTop: '24px', padding: '12px 24px', borderRadius: '8px', border: 'none',
+                background: '#007aff', color: 'white', cursor: 'pointer', fontSize: '16px'
+            });
+            closeBtn.addEventListener('click', () => {
+                closeModal();
+                document.removeEventListener('keydown', handleKeydown);
+            });
+            content.appendChild(closeBtn);
+
+        } catch (e) {
+            loading.textContent = 'Erreur lors de l\'analyse';
+            console.error(e);
+        }
+    };
+
     // Initialize
     injectStyles();
     
-    if (state.isBasket) {
+    if (state.isOperations) {
+        createWrappedUI();
+    } else if (state.isBasket) {
         createBasketUI();
         const hardcoreBtn = createBtn(`<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C12 2 7 6 7 11C7 13.76 9.24 16 12 16C14.76 16 17 13.76 17 11C17 6 12 2 12 2Z"/><path d="M12 16C12 16 9 18 9 20.5C9 21.88 10.12 23 11.5 23C12.88 23 14 21.88 14 20.5C14 18 12 16 12 16Z"/></svg>`, {
             position: 'fixed', top: '20px', right: '20px', padding: '12px', borderRadius: '12px',
