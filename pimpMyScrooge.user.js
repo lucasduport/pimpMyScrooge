@@ -498,7 +498,7 @@
 
     // Basket UI
     const createBasketUI = () => {
-        const basketData = {items: {}, total: 0, balance: null};
+        const basketData = {items: {}, total: 0, balance: null, isStudent: false};
 
         // Floating total
         const floatingTotal = document.createElement('div');
@@ -523,6 +523,7 @@
                     const match = (link.textContent || link.innerText).match(/Solde\s*:\s*([-]?\d+(?:[,\.]\d+)?)\s*€/i);
                     if (match) {
                         basketData.balance = parseFloat(match[1].replace(',', '.'));
+                        basketData.isStudent = true;
                         updateBasket();
                         return;
                     }
@@ -560,6 +561,20 @@
         else fetchBalance();
         setTimeout(fetchBalance, 100);
         setTimeout(fetchBalance, 500);
+
+        // Deactivate credit button for students
+        const deactivateCreditForStudents = () => {
+            if (basketData.isStudent) {
+                creditBtn.disabled = true;
+                css(creditBtn, {
+                    background: 'gray',
+                    cursor: 'not-allowed',
+                    opacity: 0.5
+                });
+                creditBtn.style.pointerEvents = 'none'; // Prevent hover effects
+            }
+        };
+        setTimeout(deactivateCreditForStudents, 600); // After balance fetch
 
         // Panel
         const panel = document.createElement('div');
