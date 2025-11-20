@@ -34,26 +34,53 @@
             }
         }
         .member-list form.form-wrapper {
-            transform: scale(0.75);
-            margin: -8px;
+            transform: scale(0.95);
+            margin: 4px;
         }
         .member-list form.form-wrapper:hover {
-            transform: scale(0.82);
+            transform: scale(1.05);
+        }
+        .member-list .group-avatar {
+            transform: scale(1.2) !important;
+            margin: 12px !important;
+        }
+        .member-list .group-avatar:hover {
+            transform: scale(1.3) !important;
+        }
+        .member-list .member-avatar {
+            border-radius: 12px;
         }
         .article-tile-group {
             border: 1px solid rgba(0,0,0,0.08) !important;
-            border-radius: 16px !important;
-            padding: 20px !important;
+            border-radius: 12px !important;
+            padding: 12px !important;
             margin-bottom: 20px !important;
+            gap: 8px !important;
         }
         .article-tile-item {
+            margin: 8px !important;
+            transform: scale(1) !important;
+            width: 140px !important;
+            height: 140px !important;
+            display: inline-block !important;
+            position: relative !important;
             border-radius: 12px !important;
             overflow: hidden !important;
-            margin: 8px !important;
-            transform: scale(1.15) !important;
+        }
+        .article-tile-item > a {
+            border-radius: 12px !important;
+            overflow: hidden !important;
+            display: block !important;
+            width: 100% !important;
+            height: 100% !important;
         }
         .article-tile-item img {
-            transform: scale(1.2) !important;
+            transform: scale(1) !important;
+            width: 100% !important;
+            height: 100% !important;
+            object-fit: cover !important;
+            display: block !important;
+            border-radius: 12px !important;
         }
     `;
     document.head.appendChild(style);
@@ -312,7 +339,7 @@
                 css(avatarContainer, {
                     width: '180px',
                     height: '180px',
-                    borderRadius: '24px',
+                    borderRadius: '20px',
                     backgroundImage: `url('${userAvatarUrl}')`,
                     backgroundSize: 'cover',
                     backgroundPosition: 'center',
@@ -374,8 +401,8 @@
             
             const button = form.querySelector('.member-avatar');
             if (button) {
-                css(button, { transition: 'transform 0.3s ease, box-shadow 0.3s ease, filter 0.3s ease', boxShadow: '0 2px 12px rgba(0,0,0,0.08)', borderRadius: '8px' });
-                button.addEventListener('mouseenter', () => css(button, { transform: 'scale(1.1)', boxShadow: '0 8px 24px rgba(0,0,0,0.2)', filter: 'brightness(1.1)' }));
+                css(button, { transition: 'transform 0.3s ease, box-shadow 0.3s ease, filter 0.3s ease', boxShadow: '0 2px 12px rgba(0,0,0,0.08)', borderRadius: '12px' });
+                button.addEventListener('mouseenter', () => css(button, { transform: 'scale(1.08)', boxShadow: '0 8px 24px rgba(0,0,0,0.2)', filter: 'brightness(1.1)' }));
                 button.addEventListener('mouseleave', () => css(button, { transform: 'scale(1)', boxShadow: '0 2px 12px rgba(0,0,0,0.08)', filter: 'brightness(1)' }));
             }
             
@@ -657,13 +684,13 @@
             priceTag.textContent = price + ' €';
             css(priceTag, {
                 position: 'absolute', bottom: '8px', right: '8px', background: 'rgba(0,0,0,0.75)',
-                backdropFilter: 'blur(10px)', color: 'white', padding: '6px 12px', borderRadius: '8px',
+                backdropFilter: 'blur(10px)', color: 'white', padding: '6px 12px', borderRadius: '10px',
                 fontSize: '14px', fontWeight: '600',
                 fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif',
                 boxShadow: '0 2px 8px rgba(0,0,0,0.3)', pointerEvents: 'none', zIndex: '10'
             });
             
-            css(product, { position: 'relative', borderRadius: '12px', overflow: 'hidden', transition: 'transform 0.2s ease, box-shadow 0.2s ease' });
+            css(product, { position: 'relative', transition: 'transform 0.2s ease, box-shadow 0.2s ease' });
             product.appendChild(priceTag);
             
             product.addEventListener('mouseenter', () => {
@@ -687,7 +714,59 @@
     }
 
     function createBasketControls() {
-        const basketData = { items: {}, total: 0 };
+        const basketData = { items: {}, total: 0, userBalance: null };
+
+        // Create floating total display
+        const floatingTotal = document.createElement('div');
+        floatingTotal.id = 'pimp-floating-total';
+        css(floatingTotal, {
+            position: 'fixed', top: '20px', left: '50%', transform: 'translateX(-50%)',
+            background: 'linear-gradient(135deg, #007aff 0%, #0051d5 100%)',
+            color: 'white', padding: '16px 32px', borderRadius: '16px',
+            fontSize: '20px', fontWeight: '700', boxShadow: '0 8px 32px rgba(0,122,255,0.4)',
+            zIndex: 100000, display: 'none', flexDirection: 'column', gap: '4px',
+            fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif',
+            backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
+            animation: 'fadeIn 0.3s ease', alignItems: 'center'
+        });
+        floatingTotal.innerHTML = '<div style="display: flex; align-items: center; gap: 12px; font-size: 24px;"><span>Total:</span><span id="floating-basket-total">0,00 €</span></div><div id="floating-basket-remaining" style="font-size: 14px; opacity: 0.9;"></div>';
+        document.body.appendChild(floatingTotal);
+
+        // Fetch user balance
+        const fetchUserBalance = async () => {
+            try {
+                // Get balance directly from the current basket page
+                const balanceLink = $('a.btn[href*="/credit-student/"]');
+                if (balanceLink) {
+                    const balanceText = balanceLink.textContent || balanceLink.innerText;
+                    // Extract balance from text: "Solde : X€" or "Solde : -X€" or "Solde : X,XX€"
+                    const balanceMatch = balanceText.match(/Solde\s*:\s*([-]?\d+(?:[,\.]\d+)?)\s*€/i);
+                    if (balanceMatch) {
+                        const balanceStr = balanceMatch[1].replace(',', '.');
+                        basketData.userBalance = parseFloat(balanceStr);
+                        console.log('Solde récupéré:', basketData.userBalance, '€');
+                        updateBasket();
+                    } else {
+                        console.log('Format de solde non reconnu, affichage normal sans vérification');
+                    }
+                } else {
+                    console.log('Solde non trouvé sur la page, affichage normal sans vérification');
+                }
+            } catch (err) {
+                console.error('Erreur lors de la récupération du solde:', err);
+            }
+        };
+        
+        // Wait for page to load, then fetch balance
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', fetchUserBalance);
+        } else {
+            fetchUserBalance();
+        }
+        
+        // Also retry after a short delay to handle dynamic content
+        setTimeout(fetchUserBalance, 100);
+        setTimeout(fetchUserBalance, 500);
 
         const basketPanel = document.createElement('div');
         basketPanel.id = 'pimp-basket-panel';
@@ -740,8 +819,40 @@
                 }
             });
             basketData.total = total;
-            $('#basket-total').textContent = total.toFixed(2).replace('.', ',') + ' €';
+            const formattedTotal = total.toFixed(2).replace('.', ',') + ' €';
+            const basketTotalEl = $('#basket-total');
+            const floatingBasketTotalEl = $('#floating-basket-total');
+            
+            if (basketTotalEl) basketTotalEl.textContent = formattedTotal;
+            if (floatingBasketTotalEl) floatingBasketTotalEl.textContent = formattedTotal;
+            
+            // Update color and remaining balance display
+            if (basketData.userBalance !== null && total > 0) {
+                const remaining = basketData.userBalance - total;
+                const isAffordable = total <= basketData.userBalance;
+                const gradient = isAffordable 
+                    ? 'linear-gradient(135deg, #34c759 0%, #30d158 100%)' 
+                    : 'linear-gradient(135deg, #ff3b30 0%, #ff9500 100%)';
+                
+                const floatingTotalEl = $('#pimp-floating-total');
+                if (floatingTotalEl) {
+                    floatingTotalEl.style.background = gradient;
+                    floatingTotalEl.style.boxShadow = isAffordable 
+                        ? '0 8px 32px rgba(52,199,89,0.4)' 
+                        : '0 8px 32px rgba(255,59,48,0.4)';
+                }
+                
+                const remainingEl = $('#floating-basket-remaining');
+                if (remainingEl) {
+                    remainingEl.textContent = isAffordable 
+                        ? `Reste: ${remaining.toFixed(2).replace('.', ',')} €`
+                        : `Solde insuffisant (${Math.abs(remaining).toFixed(2).replace('.', ',')} € manquants)`;
+                }
+            }
+            
             basketPanel.style.display = hasItems ? 'flex' : 'none';
+            const floatingTotalEl = $('#pimp-floating-total');
+            if (floatingTotalEl) floatingTotalEl.style.display = hasItems ? 'flex' : 'none';
         };
 
         const enhanceProductWithControls = product => {
@@ -757,14 +868,14 @@
             product.addEventListener('click', e => e.preventDefault());
 
             const controls = document.createElement('div');
-            css(controls, { position: 'absolute', bottom: '8px', left: '8px', display: 'flex', gap: '8px', alignItems: 'center', pointerEvents: 'auto', zIndex: '20' });
+            css(controls, { position: 'absolute', bottom: '8px', left: '8px', display: 'flex', gap: '6px', alignItems: 'center', pointerEvents: 'auto', zIndex: '20' });
 
             const createBtn = (text, bg) => {
                 const btn = document.createElement('button');
                 btn.textContent = text;
                 css(btn, {
-                    width: '36px', height: '36px', borderRadius: '8px', border: 'none',
-                    background: bg, color: 'white', fontSize: '20px', fontWeight: '700',
+                    width: '28px', height: '28px', borderRadius: '8px', border: 'none',
+                    background: bg, color: 'white', fontSize: '18px', fontWeight: '700',
                     cursor: 'pointer', display: text === '−' ? 'none' : 'flex',
                     alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s ease'
                 });
@@ -774,9 +885,9 @@
             const minusBtn = createBtn('−', 'rgba(255,59,48,0.9)');
             const quantityDisplay = document.createElement('div');
             css(quantityDisplay, {
-                minWidth: '40px', padding: '8px 12px', borderRadius: '8px',
+                minWidth: '28px', padding: '4px 8px', borderRadius: '8px',
                 background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)', color: 'white',
-                fontSize: '16px', fontWeight: '700', textAlign: 'center', display: 'none'
+                fontSize: '14px', fontWeight: '700', textAlign: 'center', display: 'none'
             });
             quantityDisplay.textContent = '0';
             const plusBtn = createBtn('+', 'rgba(52,199,89,0.9)');
@@ -858,48 +969,27 @@
 
             form.addEventListener('submit', async () => {
                 try {
-                    const response = await fetch('/me');
-                    const url = response.url;
-                    const match = url.match(/\/profile\/([^\/]+)/);
-                    if (match) {
-                        const login = match[1];
-                        setTimeout(async () => {
-                            try {
-                                const balanceResponse = await fetch(`https://scrooge.assistants.epita.fr/api/users/${login}/balance/`);
-                                const balanceData = await balanceResponse.json();
-                                const remainingBalance = balanceData.balance || 0;
-                                
-                                const successMsg = document.createElement('div');
-                                css(successMsg, {
-                                    position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
-                                    background: 'linear-gradient(135deg, #34c759 0%, #30d158 100%)',
-                                    color: 'white', padding: '32px 48px', borderRadius: '16px',
-                                    fontSize: '18px', fontWeight: '600', textAlign: 'center',
-                                    boxShadow: '0 8px 32px rgba(52,199,89,0.4)', zIndex: 100001,
-                                    fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif',
-                                    backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
-                                    animation: 'fadeIn 0.3s ease'
-                                });
-                                successMsg.innerHTML = `
-                                    <div style="font-size: 48px; margin-bottom: 16px;">✓</div>
-                                    <div style="font-size: 20px; font-weight: 700; margin-bottom: 8px;">Transaction réussie</div>
-                                    <div style="font-size: 16px; opacity: 0.95;">Montant: ${transactionAmount.toFixed(2).replace('.', ',')} €</div>
-                                    <div style="font-size: 16px; opacity: 0.95;">Solde restant: ${remainingBalance.toFixed(2).replace('.', ',')} €</div>
-                                `;
-                                document.body.appendChild(successMsg);
-                                
-                                setTimeout(() => {
-                                    successMsg.style.opacity = '0';
-                                    successMsg.style.transform = 'translate(-50%, -50%) scale(0.9)';
-                                    setTimeout(() => successMsg.remove(), 300);
-                                }, 3000);
-                            } catch (err) {
-                                console.error('Erreur lors de la récupération du solde:', err);
-                            }
-                        }, 1000);
-                    }
+                    // After form submission, the page will reload
+                    // We can show a quick success message before reload
+                    const successMsg = document.createElement('div');
+                    css(successMsg, {
+                        position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+                        background: 'linear-gradient(135deg, #34c759 0%, #30d158 100%)',
+                        color: 'white', padding: '32px 48px', borderRadius: '16px',
+                        fontSize: '18px', fontWeight: '600', textAlign: 'center',
+                        boxShadow: '0 8px 32px rgba(52,199,89,0.4)', zIndex: 100001,
+                        fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif',
+                        backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
+                        animation: 'fadeIn 0.3s ease'
+                    });
+                    successMsg.innerHTML = `
+                        <div style="font-size: 48px; margin-bottom: 16px;">✓</div>
+                        <div style="font-size: 20px; font-weight: 700; margin-bottom: 8px;">Transaction réussie</div>
+                        <div style="font-size: 16px; opacity: 0.95;">Montant: ${transactionAmount.toFixed(2).replace('.', ',')} €</div>
+                    `;
+                    document.body.appendChild(successMsg);
                 } catch (err) {
-                    console.error('Erreur lors de la récupération des informations utilisateur:', err);
+                    console.error('Erreur lors de l\'affichage du message de succès:', err);
                 }
             });
 
