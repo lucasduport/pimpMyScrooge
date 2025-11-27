@@ -4,7 +4,7 @@
 // @version      2.0
 // @description  Quick search bar + QR code scanner + Check user + Highlight my login + Autocomplete + Hardcore Mode + Better Basket + Scrooge Wrapped
 // @match        https://scrooge.assistants.epita.fr/kiosk/group/*
-// @match        https://scrooge.assistants.epita.fr/kiosk/basket/*
+// // @match        https://scrooge.assistants.epita.fr/kiosk/basket/*
 // @match        https://scrooge.assistants.epita.fr/profile/*operations*
 // @grant        GM_xmlhttpRequest
 // @connect      cri.epita.fr
@@ -86,7 +86,7 @@
     const toggleHardcore = () => {
         state.hardcore = !state.hardcore;
         const btn = $('#hardcore-mode-btn');
-        
+
         if (state.hardcore) {
             state.hardcoreTimer = setInterval(() => {
                 const ml = $('.member-list');
@@ -97,7 +97,7 @@
             clearInterval(state.hardcoreTimer);
             state.hardcoreTimer = null;
         }
-        
+
         if (btn) css(btn, state.hardcore ? {
             background: 'linear-gradient(135deg,#ff3b30 0%,#ff9500 100%)',
             color: 'white',
@@ -142,7 +142,7 @@
     const validateUser = (val, callback) => {
         if (!val) return;
         val = val.split('@')[0];
-        
+
         GM_xmlhttpRequest({
             method: 'GET',
             url: `https://cri.epita.fr/users/${val}`,
@@ -156,7 +156,7 @@
         let form = $('form') || $('input[name="client"]')?.form;
         if (!form) {
             form = document.createElement('form');
-            css(form, {display: 'none'});
+            css(form, { display: 'none' });
             form.method = 'post';
             form.action = location.href;
             document.body.appendChild(form);
@@ -200,15 +200,15 @@
                 const urlMatch = avatar?.style.backgroundImage.match(/url\(['"]?([^'"]+)['"]?\)/);
                 if (urlMatch) avatarUrl = urlMatch[1];
             }
-        } catch (e) {}
+        } catch (e) { }
 
         const row = document.createElement('div');
         row.className = 'pimp-search-row';
-        css(row, {display: 'flex', alignItems: 'center', gap: '16px', width: '100%', flexWrap: 'wrap'});
+        css(row, { display: 'flex', alignItems: 'center', gap: '16px', width: '100%', flexWrap: 'wrap' });
 
         const searchBar = document.createElement('div');
         searchBar.className = 'pimp-search-bar';
-        css(searchBar, {display: 'flex', alignItems: 'center', gap: '12px', flex: '1', minWidth: '200px'});
+        css(searchBar, { display: 'flex', alignItems: 'center', gap: '12px', flex: '1', minWidth: '200px' });
 
         const input = document.createElement('input');
         input.id = 'epita-login-input';
@@ -231,8 +231,8 @@
             });
         document.body.appendChild(datalist);
 
-        input.addEventListener('focus', () => css(input, {borderColor: '#007aff', boxShadow: '0 0 0 4px rgba(0,122,255,.1)'}));
-        input.addEventListener('blur', () => css(input, {borderColor: 'rgba(0,0,0,.08)', boxShadow: 'none'}));
+        input.addEventListener('focus', () => css(input, { borderColor: '#007aff', boxShadow: '0 0 0 4px rgba(0,122,255,.1)' }));
+        input.addEventListener('blur', () => css(input, { borderColor: 'rgba(0,0,0,.08)', boxShadow: 'none' }));
         searchBar.appendChild(input);
 
         const goBtn = createBtn('Go', {
@@ -308,18 +308,18 @@
                 $$('form.form-wrapper', ml).forEach(form => {
                     const login = form.getAttribute('data-login');
                     if (!login || form.querySelector('.pimp-login-label')) return;
-                    
+
                     const btn = form.querySelector('.member-avatar');
                     if (btn) {
-                        css(btn, {transition: 'transform .3s ease, box-shadow .3s ease', boxShadow: '0 2px 12px rgba(0,0,0,.08)', borderRadius: '12px'});
-                        btn.addEventListener('mouseenter', () => css(btn, {transform: 'scale(1.08)', boxShadow: '0 8px 24px rgba(0,0,0,.2)'}));
-                        btn.addEventListener('mouseleave', () => css(btn, {transform: 'scale(1)', boxShadow: '0 2px 12px rgba(0,0,0,.08)'}));
+                        css(btn, { transition: 'transform .3s ease, box-shadow .3s ease', boxShadow: '0 2px 12px rgba(0,0,0,.08)', borderRadius: '12px' });
+                        btn.addEventListener('mouseenter', () => css(btn, { transform: 'scale(1.08)', boxShadow: '0 8px 24px rgba(0,0,0,.2)' }));
+                        btn.addEventListener('mouseleave', () => css(btn, { transform: 'scale(1)', boxShadow: '0 2px 12px rgba(0,0,0,.08)' }));
                     }
-                    
+
                     const label = document.createElement('div');
                     label.className = 'pimp-login-label';
                     label.textContent = login;
-                    css(label, {position: 'absolute', opacity: 0, fontSize: '1px', height: '1px', width: '1px', overflow: 'hidden'});
+                    css(label, { position: 'absolute', opacity: 0, fontSize: '1px', height: '1px', width: '1px', overflow: 'hidden' });
                     form.appendChild(label);
                 });
             }
@@ -330,67 +330,67 @@
             const highlightProfile = () => {
                 const ml = $('.member-list');
                 if (!ml || $('#highlighted-profile-row')) return;
-                
+
                 const myForm = $(`form[data-login="${myLogin}"]`);
-                if (myForm) css(myForm, {display: 'none'});
-                
+                if (myForm) css(myForm, { display: 'none' });
+
                 const row = document.createElement('div');
                 row.id = 'highlighted-profile-row';
                 css(row, {
-                    display: 'flex', 
-                    justifyContent: 'center', 
+                    display: 'flex',
+                    justifyContent: 'center',
                     alignItems: 'center',
-                    padding: '20px 0 40px', 
+                    padding: '20px 0 40px',
                     marginBottom: '20px',
                     width: '100%'
                 });
-                
+
                 const avatar = document.createElement('div');
                 css(avatar, {
-                    width: 'clamp(120px,180px,40vw)', 
+                    width: 'clamp(120px,180px,40vw)',
                     height: 'clamp(120px,180px,40vw)',
-                    borderRadius: '20px', 
+                    borderRadius: '20px',
                     backgroundImage: `url('${avatarUrl}')`,
-                    backgroundSize: 'cover', 
+                    backgroundSize: 'cover',
                     backgroundPosition: 'center',
                     boxShadow: '0 8px 32px rgba(0,122,255,.25)',
-                    border: '4px solid rgba(0,122,255,.3)', 
+                    border: '4px solid rgba(0,122,255,.3)',
                     cursor: 'pointer',
-                    transition: 'all .3s ease', 
+                    transition: 'all .3s ease',
                     position: 'relative'
                 });
-                
+
                 const label = document.createElement('div');
                 label.textContent = myLogin;
                 css(label, {
-                    position: 'absolute', 
-                    bottom: '-28px', 
-                    left: '50%', 
+                    position: 'absolute',
+                    bottom: '-28px',
+                    left: '50%',
                     transform: 'translateX(-50%)',
-                    fontSize: '14px', 
-                    fontWeight: '600', 
-                    color: '#007aff', 
+                    fontSize: '14px',
+                    fontWeight: '600',
+                    color: '#007aff',
                     whiteSpace: 'nowrap'
                 });
                 avatar.appendChild(label);
-                
+
                 if (myForm) {
                     avatar.addEventListener('click', () => myForm.querySelector('button').click());
-                    avatar.addEventListener('mouseenter', () => css(avatar, {transform: 'scale(1.08) translateY(-4px)', boxShadow: '0 12px 48px rgba(0,122,255,.4)', borderColor: 'rgba(0,122,255,.5)'}));
-                    avatar.addEventListener('mouseleave', () => css(avatar, {transform: 'scale(1) translateY(0)', boxShadow: '0 8px 32px rgba(0,122,255,.25)', borderColor: 'rgba(0,122,255,.3)'}));
+                    avatar.addEventListener('mouseenter', () => css(avatar, { transform: 'scale(1.08) translateY(-4px)', boxShadow: '0 12px 48px rgba(0,122,255,.4)', borderColor: 'rgba(0,122,255,.5)' }));
+                    avatar.addEventListener('mouseleave', () => css(avatar, { transform: 'scale(1) translateY(0)', boxShadow: '0 8px 32px rgba(0,122,255,.25)', borderColor: 'rgba(0,122,255,.3)' }));
                 }
-                
+
                 row.appendChild(avatar);
                 ml.insertBefore(row, ml.firstChild);
             };
-            
+
             setTimeout(highlightProfile, 100);
             setTimeout(highlightProfile, 500);
             new MutationObserver(() => $('.member-list') && !$('#highlighted-profile-row') && highlightProfile())
-                .observe(document.body, {childList: true, subtree: true});
+                .observe(document.body, { childList: true, subtree: true });
         }
 
-        new MutationObserver(updateUI).observe(document.body, {childList: true, subtree: true});
+        new MutationObserver(updateUI).observe(document.body, { childList: true, subtree: true });
         setTimeout(updateUI, 50);
         setTimeout(updateUI, 300);
         window.addEventListener('resize', updateUI);
@@ -400,7 +400,7 @@
     // QR Scanner (optimized for mobile)
     const openScanner = async callback => {
         if (!await loadJsQR()) return console.error('jsQR unavailable');
-        
+
         const overlay = document.createElement('div');
         css(overlay, {
             position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
@@ -413,24 +413,24 @@
         video.setAttribute('autoplay', '');
         video.setAttribute('muted', '');
         video.muted = true;
-        css(video, {width: '90%', maxWidth: '500px', borderRadius: '12px'});
+        css(video, { width: '90%', maxWidth: '500px', borderRadius: '12px' });
         overlay.appendChild(video);
 
         const status = document.createElement('div');
         status.textContent = 'Initializing...';
-        css(status, {marginTop: '12px', color: 'white', fontSize: '14px', padding: '8px', background: 'rgba(0,0,0,.5)', borderRadius: '6px'});
+        css(status, { marginTop: '12px', color: 'white', fontSize: '14px', padding: '8px', background: 'rgba(0,0,0,.5)', borderRadius: '6px' });
         overlay.appendChild(status);
 
-        const closeBtn = createBtn('✖ Close', {marginTop: '12px', padding: '10px 16px', fontSize: '14px', borderRadius: '8px', border: 'none', background: '#d00', color: 'white', cursor: 'pointer'});
+        const closeBtn = createBtn('✖ Close', { marginTop: '12px', padding: '10px 16px', fontSize: '14px', borderRadius: '8px', border: 'none', background: '#d00', color: 'white', cursor: 'pointer' });
         overlay.appendChild(closeBtn);
         document.body.appendChild(overlay);
 
         let stream, scanning = true;
         const constraints = [
-            {video: {facingMode: {exact: 'environment'}, width: {ideal: 1280}, height: {ideal: 720}}},
-            {video: {facingMode: 'environment'}},
-            {video: {width: {ideal: 640}, height: {ideal: 480}}},
-            {video: true}
+            { video: { facingMode: { exact: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } },
+            { video: { facingMode: 'environment' } },
+            { video: { width: { ideal: 640 }, height: { ideal: 480 } } },
+            { video: true }
         ];
 
         for (const constraint of constraints) {
@@ -463,25 +463,25 @@
         closeBtn.addEventListener('click', cleanup);
 
         const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d', {willReadFrequently: true});
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
         let lastScan = 0;
         const scanDelay = 200; // Faster on mobile
 
         const tick = () => {
             if (!scanning) return;
             const now = Date.now();
-            
+
             if (video.readyState === video.HAVE_ENOUGH_DATA && now - lastScan >= scanDelay) {
                 lastScan = now;
                 const w = video.videoWidth, h = video.videoHeight;
-                
+
                 if (w > 0 && h > 0) {
                     canvas.width = w;
                     canvas.height = h;
                     ctx.drawImage(video, 0, 0, w, h);
                     const data = ctx.getImageData(0, 0, w, h);
-                    const code = jsQR(data.data, w, h, {inversionAttempts: 'dontInvert'}); // Faster
-                    
+                    const code = jsQR(data.data, w, h, { inversionAttempts: 'dontInvert' }); // Faster
+
                     if (code?.data) {
                         status.textContent = '✓ Scanned!';
                         cleanup();
@@ -492,13 +492,13 @@
             }
             requestAnimationFrame(tick);
         };
-        
+
         setTimeout(tick, 300);
     };
 
     // Basket UI
     const createBasketUI = () => {
-        const basketData = {items: {}, total: 0, balance: null, isStudent: false};
+        const basketData = { items: {}, total: 0, balance: null, isStudent: false };
 
         // Floating total
         const floatingTotal = document.createElement('div');
@@ -528,14 +528,14 @@
                         return;
                     }
                 }
-                
+
                 // Fallback: si le solde n'a pas été trouvé, c'est probablement un assistant
                 // On récupère le solde depuis la page /me/
                 const response = await fetch('/me/');
                 const html = await response.text();
                 const parser = new DOMParser();
                 const doc = parser.parseFromString(html, 'text/html');
-                
+
                 // Chercher le solde dans la card avec le header "Solde actuel"
                 const cards = Array.from(doc.querySelectorAll('.card'));
                 for (const card of cards) {
@@ -556,7 +556,7 @@
                 console.error('Failed to fetch balance:', e);
             }
         };
-        
+
         if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fetchBalance);
         else fetchBalance();
         setTimeout(fetchBalance, 100);
@@ -587,12 +587,12 @@
         });
 
         const totalRow = document.createElement('div');
-        css(totalRow, {display: 'flex', justifyContent: 'space-between', fontSize: 'clamp(18px,24px,6vw)', fontWeight: '700', color: '#1d1d1f'});
+        css(totalRow, { display: 'flex', justifyContent: 'space-between', fontSize: 'clamp(18px,24px,6vw)', fontWeight: '700', color: '#1d1d1f' });
         totalRow.innerHTML = '<span>Total</span><span id="basket-total">0,00 €</span>';
         panel.appendChild(totalRow);
 
         const payRow = document.createElement('div');
-        css(payRow, {display: 'flex', gap: '12px', flexWrap: 'wrap'});
+        css(payRow, { display: 'flex', gap: '12px', flexWrap: 'wrap' });
 
         const cashBtn = createBtn('CA$H', {
             flex: '1', minWidth: '140px', padding: '16px', borderRadius: '12px', border: 'none',
@@ -627,23 +627,23 @@
             });
             basketData.total = total;
             const formatted = total.toFixed(2).replace('.', ',') + ' €';
-            
+
             $('#basket-total').textContent = formatted;
             $('#floating-basket-total').textContent = formatted;
-            
+
             if (basketData.balance !== null && total > 0) {
                 const remaining = basketData.balance - total;
                 const affordable = remaining >= 0;
                 const gradient = affordable ? 'linear-gradient(135deg,#34c759 0%,#30d158 100%)' : 'linear-gradient(135deg,#ff3b30 0%,#ff9500 100%)';
-                
+
                 css(floatingTotal, {
                     background: gradient,
                     boxShadow: affordable ? '0 8px 32px rgba(52,199,89,.4)' : '0 8px 32px rgba(255,59,48,.4)'
                 });
-                
+
                 $('#floating-basket-remaining').textContent = `Remaining: ${remaining.toFixed(2).replace('.', ',')} €`;
             }
-            
+
             panel.style.display = hasItems ? 'flex' : 'none';
             floatingTotal.style.display = hasItems ? 'flex' : 'none';
         };
@@ -652,13 +652,13 @@
         const enhanceProduct = product => {
             if (product.dataset.enhanced) return;
             product.dataset.enhanced = 'true';
-            
+
             const id = product.id.replace('article-item-', '');
             const priceStr = product.getAttribute('data-price');
             if (!priceStr) return;
 
             const price = parseFloat(priceStr.replace(',', '.'));
-            basketData.items[id] = {quantity: 0, price, href: product.getAttribute('href')};
+            basketData.items[id] = { quantity: 0, price, href: product.getAttribute('href') };
             product.addEventListener('click', e => e.preventDefault());
 
             // Price tag
@@ -675,7 +675,7 @@
 
             // Controls
             const controls = document.createElement('div');
-            css(controls, {position: 'absolute', bottom: '8px', left: '8px', display: 'flex', gap: '6px', alignItems: 'center', zIndex: 20});
+            css(controls, { position: 'absolute', bottom: '8px', left: '8px', display: 'flex', gap: '6px', alignItems: 'center', zIndex: 20 });
 
             const createCtrlBtn = (text, bg) => {
                 const btn = document.createElement('button');
@@ -702,7 +702,7 @@
             const updateControls = () => {
                 const qty = basketData.items[id].quantity;
                 qtyDisplay.textContent = qty;
-                
+
                 if (qty > 0) {
                     minusBtn.style.display = 'flex';
                     qtyDisplay.style.display = 'block';
@@ -738,19 +738,19 @@
             product.appendChild(controls);
 
             // Hover effect
-            css(product, {position: 'relative', transition: 'transform .2s ease, box-shadow .2s ease'});
+            css(product, { position: 'relative', transition: 'transform .2s ease, box-shadow .2s ease' });
             product.addEventListener('mouseenter', () => {
-                css(product, {transform: 'translateY(-4px) scale(1.02)', boxShadow: '0 8px 24px rgba(0,0,0,.15)'});
+                css(product, { transform: 'translateY(-4px) scale(1.02)', boxShadow: '0 8px 24px rgba(0,0,0,.15)' });
                 tag.style.background = 'rgba(0,122,255,.9)';
             });
             product.addEventListener('mouseleave', () => {
-                css(product, {transform: 'translateY(0) scale(1)', boxShadow: ''});
+                css(product, { transform: 'translateY(0) scale(1)', boxShadow: '' });
                 tag.style.background = 'rgba(0,0,0,.75)';
             });
         };
 
         new MutationObserver(() => $$('.article-tile-item').forEach(enhanceProduct))
-            .observe(document.body, {childList: true, subtree: true});
+            .observe(document.body, { childList: true, subtree: true });
         setTimeout(() => $$('.article-tile-item').forEach(enhanceProduct), 100);
 
         // Submit
@@ -761,7 +761,7 @@
             const form = document.createElement('form');
             form.method = 'POST';
             form.action = `/kiosk/basket/${basketId}/checkout/${method}/`;
-            css(form, {display: 'none'});
+            css(form, { display: 'none' });
 
             const csrf = $('input[name="csrfmiddlewaretoken"]')?.value;
             if (csrf) {
@@ -822,7 +822,7 @@
     };
 
     const fetchOperation = async url => {
-        const response = await new Promise((resolve, reject) => GM_xmlhttpRequest({method: 'GET', url, onload: resolve, onerror: reject}));
+        const response = await new Promise((resolve, reject) => GM_xmlhttpRequest({ method: 'GET', url, onload: resolve, onerror: reject }));
         const doc = new DOMParser().parseFromString(response.responseText, 'text/html');
         const type = Array.from(doc.querySelectorAll('dt')).find(dt => dt.textContent.trim() === 'Type')?.nextElementSibling?.textContent.trim();
         const valueEl = Array.from(doc.querySelectorAll('dt')).find(dt => dt.textContent.trim() === 'Valeur')?.nextElementSibling;
@@ -830,9 +830,9 @@
         const table = doc.querySelector('table.table');
         const articles = table ? $$('tbody tr', table).map(row => {
             const cells = $$('td', row);
-            return cells.length >= 2 ? {name: cells[0].textContent.trim(), qty: parseInt(cells[1].textContent.trim())} : null;
+            return cells.length >= 2 ? { name: cells[0].textContent.trim(), qty: parseInt(cells[1].textContent.trim()) } : null;
         }).filter(a => a && a.name && !isNaN(a.qty)) : [];
-        return {type, value, articles};
+        return { type, value, articles };
     };
 
     const generateWrapped = async () => {
@@ -856,7 +856,7 @@
 
         const loading = document.createElement('div');
         loading.textContent = 'Analyzing your transactions...';
-        css(loading, {textAlign: 'center', fontSize: '18px', color: '#8e8e93'});
+        css(loading, { textAlign: 'center', fontSize: '18px', color: '#8e8e93' });
         content.appendChild(loading);
 
         modal.appendChild(content);
@@ -873,14 +873,14 @@
             const opLinks = $$('a[href*="/operations/"]').map(a => baseUrl + a.getAttribute('href')).filter(href => href.match(/\/operations\/\d+\/?$/));
             const uniqueOps = [...new Set(opLinks)];
 
-            const stats = {totalOps: 0, articles: {}, totalArticles: 0, totalSpent: 0};
+            const stats = { totalOps: 0, articles: {}, totalArticles: 0, totalSpent: 0 };
 
             for (const url of uniqueOps) {
                 try {
-                    const {type, value, articles} = await fetchOperation(url);
+                    const { type, value, articles } = await fetchOperation(url);
                     if (type === 'Transaction' && articles.length > 0) {
                         stats.totalOps++;
-                        articles.forEach(({name, qty}) => {
+                        articles.forEach(({ name, qty }) => {
                             stats.articles[name] = (stats.articles[name] || 0) + qty;
                             stats.totalArticles += qty;
                         });
@@ -911,7 +911,7 @@
                 <div style="max-height:300px;overflow-y:auto">
                     ${sortedArticles.slice(0, 10).map(([name, qty], i) => `
                         <div style="display:flex;justify-content:space-between;padding:12px;border-bottom:1px solid #f0f0f0">
-                            <span>${i+1}. ${name}</span>
+                            <span>${i + 1}. ${name}</span>
                             <span style="font-weight:600">${qty}</span>
                         </div>
                     `).join('')}
@@ -936,7 +936,7 @@
 
     // Initialize
     injectStyles();
-    
+
     if (state.isOperations) {
         createWrappedUI();
     } else if (state.isBasket) {
