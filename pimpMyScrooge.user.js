@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PimpMyScrooge
 // @namespace    https://scrooge.assistants.epita.fr/*
-// @version      2.0
+// @version      2.1
 // @description  Quick search bar + QR code scanner + Check user + Highlight my login + Autocomplete + Hardcore Mode + Better Basket + Scrooge Wrapped
 // @match        https://scrooge.assistants.epita.fr/kiosk/group/*
 // // @match        https://scrooge.assistants.epita.fr/kiosk/basket/*
